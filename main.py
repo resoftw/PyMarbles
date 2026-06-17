@@ -354,46 +354,46 @@ def render_physics_scene(target_surface, target_glow_surf, render_cam, draw_hud_
         scaled_font = pygame.font.SysFont(UITheme.FONT_NAME, int(15 * (target_surface.get_width() / width)))
         simulation.draw_hud(target_surface, scaled_font)
 
+def merge_audio_video(temp_video, temp_audio, final_video):
+    """Muxes the recorded video + audio into the final MP4 (synchronous)."""
+    print("Merging audio and video...")
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', temp_video,
+        '-i', temp_audio,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        final_video
+    ]
+    try:
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        result = subprocess.run(cmd, startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            print(f"Merge successful! Video saved to {final_video}")
+            # Clean up temporary files safely
+            for tmp in (temp_video, temp_audio):
+                if os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except Exception as e:
+                        print(f"Error removing temp file {tmp}: {e}")
+            return True
+        else:
+            print(f"FFmpeg merge failed with return code {result.returncode}")
+            print(f"FFmpeg stderr: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error during audio/video merge: {e}")
+        return False
+
 def merge_audio_video_async(temp_video, temp_audio, final_video):
-    def run_merge():
-        print("Merging audio and video in background...")
-        cmd = [
-            'ffmpeg', '-y',
-            '-i', temp_video,
-            '-i', temp_audio,
-            '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            final_video
-        ]
-        try:
-            startupinfo = None
-            if os.name == 'nt':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                
-            result = subprocess.run(cmd, startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode == 0:
-                print(f"Merge successful! Video saved to {final_video}")
-                # Clean up temporary files safely
-                if os.path.exists(temp_video):
-                    try:
-                        os.remove(temp_video)
-                    except Exception as e:
-                        print(f"Error removing temp video file: {e}")
-                if os.path.exists(temp_audio):
-                    try:
-                        os.remove(temp_audio)
-                    except Exception as e:
-                        print(f"Error removing temp audio file: {e}")
-            else:
-                print(f"FFmpeg merge failed with return code {result.returncode}")
-                print(f"FFmpeg stderr: {result.stderr}")
-        except Exception as e:
-            print(f"Error during audio/video merge: {e}")
-            
-    thread = threading.Thread(target=run_merge)
+    thread = threading.Thread(target=merge_audio_video, args=(temp_video, temp_audio, final_video))
     thread.daemon = True
     thread.start()
 
@@ -501,6 +501,36 @@ def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
     screen.blit(hint_surf, hint_surf.get_rect(center=(width // 2, stop_rect.bottom + 24)))
     pygame.display.flip()
 
+def _draw_saving_overlay(tick, status_text):
+    """Animated spinner shown while the render is being encoded/saved."""
+    screen.fill(UITheme.BG_DARK_SOLID)
+    cx, cy = width // 2, height // 2
+
+    title = pygame.font.SysFont(UITheme.FONT_NAME, 24, bold=True)
+    ts = title.render("SAVING RENDER", True, UITheme.ACCENT_CYAN)
+    screen.blit(ts, ts.get_rect(center=(cx, cy - 80)))
+
+    # Spinner: dots around a circle with a fading comet trail
+    n = 12
+    radius = 28
+    lead = (tick // 2) % n
+    for i in range(n):
+        ang = 2.0 * math.pi * i / n - math.pi / 2.0
+        phase = (lead - i) % n
+        b = 1.0 - phase / n
+        col = (int(40 + 215 * b), int(60 + 195 * b), int(80 + 175 * b))
+        px = int(cx + radius * math.cos(ang))
+        py = int(cy + radius * math.sin(ang))
+        pygame.draw.circle(screen, col, (px, py), 4)
+
+    st = pygame.font.SysFont(UITheme.FONT_NAME, 16)
+    ss = st.render(status_text, True, UITheme.TEXT_LIGHT)
+    screen.blit(ss, ss.get_rect(center=(cx, cy + 72)))
+    hint = pygame.font.SysFont(UITheme.FONT_NAME, 13)
+    hs = hint.render("Please wait — encoding in progress", True, UITheme.TEXT_MUTED)
+    screen.blit(hs, hs.get_rect(center=(cx, cy + 100)))
+    pygame.display.flip()
+
 def render_hq_take():
     """Renders the race offline at high quality with a manual stop.
 
@@ -595,20 +625,42 @@ def run_offline_render(seed):
         if rendered % 3 == 0:
             _draw_render_overlay(frame, rendered, simulation.sim_time, stop_rect)
 
-    # Finalize
-    video_exporter.stop_recording()
-    sm.stop_recording(temp_audio, rendered / 60.0)
+    # Finalize. The audio mixdown + FFmpeg encode are heavy and synchronous, so run
+    # them on a worker thread and animate a spinner on the main thread instead of
+    # letting the window freeze.
+    capped = " (safety cap reached)" if rendered >= SAFETY_CAP else ""
+    if rendered > 0:
+        status = {'text': 'Finalizing video frames...', 'done': False}
+
+        def finalize():
+            video_exporter.stop_recording()
+            status['text'] = 'Mixing spatial audio...'
+            sm.stop_recording(temp_audio, rendered / 60.0)
+            status['text'] = 'Encoding final MP4 (FFmpeg)...'
+            merge_audio_video(temp_video, temp_audio, final_video)
+            status['done'] = True
+
+        worker = threading.Thread(target=finalize, daemon=True)
+        worker.start()
+
+        spin_clock = pygame.time.Clock()
+        tick = 0
+        while not status['done']:
+            pygame.event.pump()  # keep the window responsive (ignore input while saving)
+            _draw_saving_overlay(tick, status['text'])
+            tick += 1
+            spin_clock.tick(30)
+
+        print(f"RENDER HQ: {rendered} frames done{capped}; saved -> {final_video}")
+    else:
+        video_exporter.stop_recording()
+        sm.stop_recording(temp_audio, 0.0)
+        print("RENDER HQ: stopped before any frame was rendered.")
+
     sm.offline = False
     simulation.stop()
     simulation.camera = cam_backup
     simulation.speed_multiplier = speed_backup
-
-    if rendered > 0:
-        merge_audio_video_async(temp_video, temp_audio, final_video)
-        capped = " (safety cap reached)" if rendered >= SAFETY_CAP else ""
-        print(f"RENDER HQ: {rendered} frames done{capped}; muxing audio -> {final_video}")
-    else:
-        print("RENDER HQ: stopped before any frame was rendered.")
     build_ui()
 
 def toggle_grid_snap():
