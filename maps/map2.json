@@ -1,0 +1,1279 @@
+{
+    "gravity": [
+        0.0,
+        -30.0
+    ],
+    "walls": [
+        {
+            "p1": [
+                -4.0,
+                15.0
+            ],
+            "p2": [
+                -1.0,
+                12.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                4.0,
+                15.0
+            ],
+            "p2": [
+                1.0,
+                12.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -1.0,
+                12.0
+            ],
+            "p2": [
+                -1.0,
+                10.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                1.0,
+                12.0
+            ],
+            "p2": [
+                1.0,
+                10.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -8.0,
+                10.0
+            ],
+            "p2": [
+                -8.0,
+                -6.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                8.0,
+                10.0
+            ],
+            "p2": [
+                8.0,
+                -6.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -8.0,
+                -6.0
+            ],
+            "p2": [
+                -2.0,
+                -10.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                8.0,
+                -6.0
+            ],
+            "p2": [
+                2.0,
+                -10.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -2.0,
+                -10.0
+            ],
+            "p2": [
+                -2.0,
+                -12.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                2.0,
+                -10.0
+            ],
+            "p2": [
+                2.0,
+                -12.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -2.0,
+                -12.0
+            ],
+            "p2": [
+                5.0,
+                -18.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.01,
+            "elasticity": 0.2,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                2.0,
+                -12.0
+            ],
+            "p2": [
+                7.0,
+                -16.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.01,
+            "elasticity": 0.2,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                5.0,
+                -18.0
+            ],
+            "p2": [
+                9.0,
+                -17.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.01,
+            "elasticity": 0.2,
+            "color": [
+                255,
+                0,
+                255
+            ]
+        },
+        {
+            "p1": [
+                7.0,
+                -16.0
+            ],
+            "p2": [
+                9.5,
+                -15.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.01,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                0,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -12.0,
+                -20.0
+            ],
+            "p2": [
+                -3.0,
+                -22.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -12.0,
+                -16.0
+            ],
+            "p2": [
+                -12.0,
+                -20.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -3.0,
+                -22.0
+            ],
+            "p2": [
+                -3.0,
+                -18.0
+            ],
+            "thickness": 0.1,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                100,
+                100,
+                255
+            ]
+        },
+        {
+            "p1": [
+                28.916094370837463,
+                -14.593256846722934
+            ],
+            "p2": [
+                25.095955679101934,
+                -28.738094705311248
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                25.095955679101934,
+                -28.686471209476984
+            ],
+            "p2": [
+                7.068853446757845,
+                -29.383608340136174
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                7.068853446757845,
+                -29.33824625336183
+            ],
+            "p2": [
+                -2.956167730371501,
+                -18.04308664655094
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                28.91068696746497,
+                -14.575220064356516
+            ],
+            "p2": [
+                23.34162089356792,
+                -8.829358242081783
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -15.021570155674468,
+                -14.804960284398817
+            ],
+            "p2": [
+                -18.620203043289727,
+                -18.889894913583706
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        },
+        {
+            "p1": [
+                -23.434590284829056,
+                -13.491945582160819
+            ],
+            "p2": [
+                -18.814723739917575,
+                -18.889894913583706
+            ],
+            "thickness": 0.1,
+            "friction": 0.5,
+            "elasticity": 0.8,
+            "color": [
+                0,
+                255,
+                255
+            ]
+        }
+    ],
+    "boxes": [
+        {
+            "pos": [
+                -1.0,
+                8.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                1.0,
+                8.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -2.0,
+                6.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                0.0,
+                6.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                2.0,
+                6.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -3.0,
+                4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -1.0,
+                4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                1.0,
+                4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                3.0,
+                4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -4.0,
+                2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -2.0,
+                2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                0.0,
+                2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                2.0,
+                2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                4.0,
+                2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -5.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -3.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -1.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                1.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                3.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                5.0,
+                0.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -6.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -4.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -2.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                0.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                2.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                4.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                6.0,
+                -2.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -7.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -5.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -3.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                -1.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                1.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                3.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                5.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        },
+        {
+            "pos": [
+                7.0,
+                -4.0
+            ],
+            "width": 0.4,
+            "height": 0.4,
+            "angle": 0.0,
+            "is_dynamic": false,
+            "mass": 0.0,
+            "friction": 0.1,
+            "elasticity": 0.8,
+            "color": [
+                255,
+                100,
+                100
+            ]
+        }
+    ],
+    "boosters": [
+        {
+            "p1": [
+                0.0,
+                -13.7
+            ],
+            "p2": [
+                4.0,
+                -17.1
+            ],
+            "force_strength": 120.0,
+            "color": [
+                0,
+                255,
+                100
+            ]
+        },
+        {
+            "p1": [
+                5.0284575355758605,
+                -17.92170320615974
+            ],
+            "p2": [
+                8.62358610673656,
+                -17.047887234002626
+            ],
+            "force_strength": 80.0,
+            "color": [
+                0,
+                255,
+                100
+            ]
+        }
+    ],
+    "portals": [
+        {
+            "pos_a": [
+                22.96585931066862,
+                -24.04226655825284
+            ],
+            "pos_b": [
+                -0.09263549530259851,
+                -7.121231812577445
+            ],
+            "radius": 0.6,
+            "color": [
+                255,
+                150,
+                0
+            ]
+        },
+        {
+            "pos_a": [
+                -18.620203043289727,
+                -18.306332823700153
+            ],
+            "pos_b": [
+                -5.684576717537583,
+                8.148481917687691
+            ],
+            "radius": 0.6,
+            "color": [
+                255,
+                150,
+                0
+            ]
+        }
+    ],
+    "finish_lines": [
+        {
+            "p1": [
+                -11.5,
+                -19.5
+            ],
+            "p2": [
+                -3.5,
+                -21.3
+            ],
+            "color": [
+                255,
+                255,
+                255
+            ]
+        }
+    ],
+    "spawners": [
+        {
+            "pos": [
+                0.0,
+                16.0
+            ],
+            "rate": 0.15,
+            "count": 59,
+            "marble_color": null
+        }
+    ],
+    "conveyors": [],
+    "elevators": [],
+    "seesaws": [
+        {
+            "pos": [
+                15.222334935529032,
+                -19.224073613721544
+            ],
+            "length": 6.0,
+            "thickness": 0.3,
+            "color": [
+                255,
+                230,
+                0
+            ]
+        }
+    ],
+    "spinners": [],
+    "escalators": [
+        {
+            "p1": [
+                7.613198488049935,
+                -29.360927296749004
+            ],
+            "p2": [
+                -3.6592800753737844,
+                -16.750267173482225
+            ],
+            "speed": 4.0,
+            "step_size": 1.2901639344262295,
+            "color": [
+                255,
+                100,
+                0
+            ]
+        },
+        {
+            "p1": [
+                -4.57688941729565,
+                -18.317139529068363
+            ],
+            "p2": [
+                -14.427201360422695,
+                -13.90260038615295
+            ],
+            "speed": 4.0,
+            "step_size": 1.622950819672131,
+            "color": [
+                255,
+                100,
+                0
+            ]
+        }
+    ],
+    "camera": {
+        "render_frame": {
+            "pos": [
+                0.17105445845430944,
+                2.3743779312095175
+            ],
+            "height": 29.99325107970734,
+            "angle": 0.0,
+            "format": "9:16",
+            "keyframes": [
+                {
+                    "t": 186,
+                    "pos": [
+                        0.17105445845430944,
+                        2.3743779312095175
+                    ],
+                    "angle": 0.0,
+                    "height": 29.99325107970734,
+                    "interp": "smooth"
+                },
+                {
+                    "t": 251,
+                    "pos": [
+                        2.648982258498978,
+                        -4.594794006416112
+                    ],
+                    "angle": 0.0,
+                    "height": 33.710142779774344,
+                    "interp": "smooth"
+                },
+                {
+                    "t": 306,
+                    "pos": [
+                        2.648982258498978,
+                        -4.594794006416112
+                    ],
+                    "angle": 0.0,
+                    "height": 33.710142779774344,
+                    "interp": "smooth"
+                },
+                {
+                    "t": 353,
+                    "pos": [
+                        9.360036716953287,
+                        -8.982791152328545
+                    ],
+                    "angle": 0.39319547622574036,
+                    "height": 48.168289540268745,
+                    "interp": "smooth"
+                },
+                {
+                    "t": 425,
+                    "pos": [
+                        9.360036716953287,
+                        -8.982791152328545
+                    ],
+                    "angle": 0.39319547622574036,
+                    "height": 48.168289540268745,
+                    "interp": "smooth"
+                },
+                {
+                    "t": 451,
+                    "pos": [
+                        9.797160934418983,
+                        -20.260595962943533
+                    ],
+                    "angle": 0.7686516153678595,
+                    "height": 34.01270533602331,
+                    "interp": "smooth"
+                }
+            ]
+        },
+        "seq_len": 500,
+        "seed": 1937177248
+    }
+}
