@@ -85,12 +85,15 @@ class SoundManager:
         # modulated every frame by aggregate rolling activity (see update_rolling).
         self.rolling_sound = None
         self.rolling_channel = None
-        self.rolling_master = 0.45  # overall loudness ceiling for the rolling bed
+        self.rolling_raw = None       # raw loop samples, for synthesizing into recordings
+        self.rolling_envelope = []    # [{time, level, pan}] logged while recording
+        self.rolling_master = 0.45    # overall loudness ceiling for the rolling bed
         if self.enabled:
             roll_path = os.path.join(base_dir, "rolling.wav")
             if os.path.exists(roll_path):
                 try:
                     self.rolling_sound = pygame.mixer.Sound(roll_path)
+                    self.rolling_raw, _, _ = self._load_raw_wav(roll_path)
                     # Reserve channel 0 so effect sounds never steal the rolling loop
                     pygame.mixer.set_reserved(1)
                     self.rolling_channel = pygame.mixer.Channel(0)
@@ -279,7 +282,7 @@ class SoundManager:
         on a track spins proportionally to its travel. We sum that activity, then
         set the looped bed's volume, stereo pan, and distance falloff to match the
         activity-weighted centroid of the rolling marbles."""
-        if not self.enabled or self.rolling_channel is None:
+        if not self.enabled:
             return
 
         total = 0.0
@@ -295,24 +298,28 @@ class SoundManager:
             cy += m.body.position.y * roll
 
         if total <= 0.0:
-            self.rolling_channel.set_volume(0.0)
-            return
+            level = 0.0
+            pan = 0.0
+        else:
+            centroid = (cx / total, cy / total)
+            _, pan, distance_gain, _ = self.calculate_spatial(centroid, None)
+            # Saturating curve so a crowd of marbles swells the bed without clipping
+            activity = 1.0 - math.exp(-total * 0.45)
+            level = activity * distance_gain * self.rolling_master
 
-        centroid = (cx / total, cy / total)
-        _, pan, distance_gain, _ = self.calculate_spatial(centroid, None)
+        # Log the envelope so the rolling bed can be synthesized into recordings
+        if self.recording:
+            self.rolling_envelope.append({'time': self.current_time, 'level': level, 'pan': pan})
 
-        # Saturating curve so a crowd of marbles swells the bed without clipping
-        activity = 1.0 - math.exp(-total * 0.45)
-        level = activity * distance_gain * self.rolling_master
-
-        angle = (pan + 1.0) * (math.pi / 4.0)
-        left_gain = math.cos(angle)
-        right_gain = math.sin(angle)
-        self.rolling_channel.set_volume(level * left_gain, level * right_gain)
+        # Drive the live looped channel
+        if self.rolling_channel is not None:
+            angle = (pan + 1.0) * (math.pi / 4.0)
+            self.rolling_channel.set_volume(level * math.cos(angle), level * math.sin(angle))
 
     def start_recording(self):
         """Starts recording sound events."""
         self.recorded_events = []
+        self.rolling_envelope = []
         self.recording = True
         self.current_time = 0.0
         print("Sound recording started.")
@@ -336,6 +343,38 @@ class SoundManager:
     def _cutoff_for_distance(self, dist):
         """Maps source distance to a low-pass cutoff: near = bright, far = muffled."""
         return 2500.0 + (16000.0 - 2500.0) * math.exp(-dist / 15.0)
+
+    def _mix_rolling_bed(self, output_data, total_samples, sr=44100):
+        """Synthesizes the continuous rolling rumble into the recording mix by tiling
+        the seamless loop and applying the per-frame level/pan envelope captured live."""
+        if self.rolling_raw is None or len(self.rolling_envelope) < 2 or total_samples <= 0:
+            return
+
+        loop_left = self.rolling_raw[0::2]
+        loop_right = self.rolling_raw[1::2]
+        if len(loop_left) == 0:
+            return
+
+        n = total_samples
+        reps = n // len(loop_left) + 1
+        bed_left = np.tile(loop_left, reps)[:n]
+        bed_right = np.tile(loop_right, reps)[:n]
+
+        times = np.array([e['time'] for e in self.rolling_envelope], dtype=np.float64)
+        levels = np.array([e['level'] for e in self.rolling_envelope], dtype=np.float64)
+        pans = np.array([e['pan'] for e in self.rolling_envelope], dtype=np.float64)
+
+        # Interpolate the frame-rate envelope up to per-sample resolution
+        sample_times = np.arange(n) / float(sr)
+        level_env = np.interp(sample_times, times, levels, left=0.0, right=0.0)
+        pan_env = np.interp(sample_times, times, pans, left=pans[0], right=pans[-1])
+
+        angle = (pan_env + 1.0) * (math.pi / 4.0)
+        bed_left = bed_left * level_env * np.cos(angle)
+        bed_right = bed_right * level_env * np.sin(angle)
+
+        output_data[0::2] += bed_left.astype(np.float32)
+        output_data[1::2] += bed_right.astype(np.float32)
 
     def save_wav_recording(self, output_wav_path, duration_sec):
         """Mixes all recorded sound events into a single WAV file applying exact pitch and panning."""
@@ -382,7 +421,10 @@ class SoundManager:
                 
                 if add_len > 0:
                     output_data[start_sample:end_sample] += panned_stereo[:add_len]
-                    
+
+        # Synthesize the continuous rolling bed from its logged envelope
+        self._mix_rolling_bed(output_data, total_samples)
+
         # Clip output to prevent digital distortion and convert to 16-bit PCM WAV
         output_data = np.clip(output_data, -1.0, 1.0)
         output_pcm = (output_data * 32767.0).astype(np.int16)
