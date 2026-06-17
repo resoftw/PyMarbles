@@ -10,7 +10,7 @@ from camera import Camera
 from physics_manager import PhysicsManager
 from map_manager import MapManager
 from video_exporter import VideoExporter
-from editor import Editor
+from editor import Editor, RENDER_FORMATS, render_frame_size
 from simulation import Simulation
 from ui import UITheme, Button, Slider, Tooltip, draw_neon_line, draw_neon_circle
 from sound_manager import SoundManager
@@ -463,7 +463,7 @@ def _render_stop_button_rect():
     bw, bh = 220, 48
     return pygame.Rect((width - bw) // 2, int(height * 0.78), bw, bh)
 
-def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
+def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect, out_w, out_h):
     """Draws the live preview + STOP button while offline rendering is in progress."""
     screen.fill(UITheme.BG_DARK_SOLID)
 
@@ -472,18 +472,19 @@ def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
     title_surf = title.render("RENDERING HQ", True, UITheme.ACCENT_CYAN)
     screen.blit(title_surf, title_surf.get_rect(center=(width // 2, int(height * 0.12))))
 
-    # Small live preview of the frame currently being written
-    pv_w = min(900, int(width * 0.5))
-    pv_h = int(pv_w * 9 / 16)
+    # Small live preview, scaled to fit a box while preserving the output aspect ratio
+    box_w, box_h = int(width * 0.45), int(height * 0.5)
+    scale = min(box_w / out_w, box_h / out_h)
+    pv_w, pv_h = max(1, int(out_w * scale)), max(1, int(out_h * scale))
     pv_x = (width - pv_w) // 2
-    pv_y = int(height * 0.20)
+    pv_y = int(height * 0.18)
     preview = pygame.transform.smoothscale(frame, (pv_w, pv_h))
     screen.blit(preview, (pv_x, pv_y))
     pygame.draw.rect(screen, UITheme.BORDER, (pv_x, pv_y, pv_w, pv_h), width=1)
 
     # Info line (frame count + sim time + quality)
     info = pygame.font.SysFont(UITheme.FONT_NAME, 16)
-    line = f"frame {frame_idx}   |   {sim_time:.2f}s   |   1920x1080  2x SS   |   frame-locked 60fps"
+    line = f"frame {frame_idx}   |   {sim_time:.2f}s   |   {out_w}x{out_h}  2x SS   |   frame-locked 60fps"
     info_surf = info.render(line, True, UITheme.TEXT_MUTED)
     screen.blit(info_surf, info_surf.get_rect(center=(width // 2, pv_y + pv_h + 28)))
 
@@ -551,26 +552,54 @@ def render_hq_take():
     run_offline_render(seed)
 
 def run_offline_render(seed):
-    OUT_W, OUT_H = 1920, 1080
     SS = 2  # supersample factor (render at 2x then downscale for anti-aliasing)
-    HI_W, HI_H = OUT_W * SS, OUT_H * SS
     SAFETY_CAP = 60 * 60 * 5  # hard limit: 5 minutes of footage
 
-    # Hi-res render camera mirroring the live camera, zoom scaled to the render height
-    render_cam = Camera(HI_W, HI_H)
-    render_cam.x, render_cam.y = camera.x, camera.y
-    render_cam.zoom = camera.zoom * (HI_H / float(height))
-    render_cam.min_zoom, render_cam.max_zoom = 1e-3, 1e9
+    rf = editor.render_frame
+    use_frame = rf is not None
 
-    hi_surf = pygame.Surface((HI_W, HI_H))
-    hi_glow = pygame.Surface((HI_W, HI_H), pygame.SRCALPHA)
+    if use_frame:
+        OUT_W, OUT_H = RENDER_FORMATS[rf["format"]]
+    else:
+        OUT_W, OUT_H = 1920, 1080
+    HI_W, HI_H = OUT_W * SS, OUT_H * SS
+
     hud_font = pygame.font.SysFont(UITheme.FONT_NAME, 16)
 
-    # Deterministic reset; route follow-camera updates to the render camera
     cam_backup = simulation.camera
     speed_backup = simulation.speed_multiplier
-    simulation.camera = render_cam
+    mode_backup = simulation.camera_mode
     simulation.speed_multiplier = 1.0
+
+    rotated = use_frame and abs(rf["angle"]) > 1e-4
+    if use_frame:
+        # Static shot framed on the render region. When rotated we render into a square
+        # large enough to contain the frame, then rotate-and-crop to the output rect.
+        fw, fh = render_frame_size(rf)
+        zoom_hi = HI_H / float(rf["height"])
+        if rotated:
+            cam_dim = int(math.ceil(math.hypot(HI_W, HI_H)))
+        else:
+            cam_dim = max(HI_W, HI_H)
+        render_cam = Camera(HI_W if not rotated else cam_dim, HI_H if not rotated else cam_dim)
+        render_cam.x, render_cam.y = rf["pos"]
+        render_cam.zoom = zoom_hi
+        render_cam.min_zoom, render_cam.max_zoom = 1e-3, 1e9
+        surf_w, surf_h = render_cam.screen_width, render_cam.screen_height
+        # The render camera is fixed on the frame; keep follow-mode from moving the live cam
+        simulation.camera = Camera(10, 10)
+        simulation.camera_mode = "free"
+    else:
+        render_cam = Camera(HI_W, HI_H)
+        render_cam.x, render_cam.y = camera.x, camera.y
+        render_cam.zoom = camera.zoom * (HI_H / float(height))
+        render_cam.min_zoom, render_cam.max_zoom = 1e-3, 1e9
+        surf_w, surf_h = HI_W, HI_H
+        simulation.camera = render_cam
+
+    hi_surf = pygame.Surface((surf_w, surf_h))
+    hi_glow = pygame.Surface((surf_w, surf_h), pygame.SRCALPHA)
+
     simulation.start(seed=seed)
 
     sm = SoundManager.get_instance()
@@ -589,9 +618,11 @@ def run_offline_render(seed):
         simulation.stop()
         simulation.camera = cam_backup
         simulation.speed_multiplier = speed_backup
+        simulation.camera_mode = mode_backup
         return
 
-    print(f"RENDER HQ: rendering at {OUT_W}x{OUT_H} ({SS}x SS) until stopped...")
+    label = (rf["format"] if use_frame else "live cam")
+    print(f"RENDER HQ: rendering {OUT_W}x{OUT_H} [{label}] ({SS}x SS) until stopped...")
     stop_rect = _render_stop_button_rect()
     rendered = 0
     stop = False
@@ -608,22 +639,36 @@ def run_offline_render(seed):
             break
 
         # Advance exactly one frame of simulation time (frame-locked, not wall-clock)
-        sm.camera_pos = (render_cam.x, render_cam.y)
-        sm.view_half_width = (HI_W / 2.0) / render_cam.zoom
+        if use_frame:
+            sm.camera_pos = rf["pos"]
+            sm.view_half_width = fw / 2.0
+        else:
+            sm.camera_pos = (render_cam.x, render_cam.y)
+            sm.view_half_width = (HI_W / 2.0) / render_cam.zoom
         simulation.update()
 
-        # Render the world supersampled (no HUD), downscale, then draw a crisp HUD
+        # Render the world supersampled (no HUD)
         hi_glow.fill((0, 0, 0, 0))
         render_physics_scene(hi_surf, hi_glow, render_cam, draw_hud_overlay=False)
-        frame = pygame.transform.smoothscale(hi_surf, (OUT_W, OUT_H))
-        simulation.draw_hud(frame, hud_font)
 
+        if rotated:
+            # Rotate the rendered square so the frame becomes upright, then crop center
+            rot = pygame.transform.rotate(hi_surf, -math.degrees(rf["angle"]))
+            crop = pygame.Rect(0, 0, HI_W, HI_H)
+            crop.center = rot.get_rect().center
+            cropped = pygame.Surface((HI_W, HI_H))
+            cropped.blit(rot, (0, 0), crop)
+            frame = pygame.transform.smoothscale(cropped, (OUT_W, OUT_H))
+        else:
+            frame = pygame.transform.smoothscale(hi_surf, (OUT_W, OUT_H))
+
+        simulation.draw_hud(frame, hud_font)
         video_exporter.write_frame(frame)
         rendered += 1
 
         # Update the small preview a few times per second (cheap, offline)
         if rendered % 3 == 0:
-            _draw_render_overlay(frame, rendered, simulation.sim_time, stop_rect)
+            _draw_render_overlay(frame, rendered, simulation.sim_time, stop_rect, OUT_W, OUT_H)
 
     # Finalize. The audio mixdown + FFmpeg encode are heavy and synchronous, so run
     # them on a worker thread and animate a spinner on the main thread instead of
@@ -661,6 +706,7 @@ def run_offline_render(seed):
     simulation.stop()
     simulation.camera = cam_backup
     simulation.speed_multiplier = speed_backup
+    simulation.camera_mode = mode_backup
     build_ui()
 
 def toggle_grid_snap():
@@ -691,6 +737,7 @@ left_tools = [
     {"name": "portal", "label": "PORTAL", "tooltip": "Create teleporter nodes (A to B)"},
     {"name": "spawner", "label": "SPAWNER", "tooltip": "Place marble generators"},
     {"name": "finish", "label": "FINISH LINE", "tooltip": "Draw race finish line"},
+    {"name": "renderframe", "label": "RENDER CAM", "tooltip": "Drag to place the render region; move/rotate/scale it like any object. RENDER HQ exports what's inside."},
     {"name": "eraser", "label": "ERASER", "tooltip": "Delete objects under cursor"}
 ]
 tool_buttons = []
@@ -832,7 +879,8 @@ while True:
     if not simulation.running:
         editor.draw_grid(screen)
         editor.draw_previews(screen)
-        
+        editor.draw_render_frame(screen)
+
         # Draw selection bounds around selected entity
         if editor.selected_entity:
             type_str, obj = editor.selected_entity
