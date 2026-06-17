@@ -57,6 +57,34 @@ def main():
     bar.draw(surface, font, playhead=10, seq_len=seq_len, n_cached=100, playing=False,
              keyframes=keyframes)
 
+    # --- Fix 1: keyframe button geometry within bar ---
+    transport_names = ("play", "pause", "reset", "bake")
+    key_names = ("key_add", "key_del", "key_interp")
+
+    for kname in key_names:
+        rect = bar.buttons[kname]
+        assert bar.bar.contains(rect), (
+            f"{kname} rect {rect} not contained in bar {bar.bar}"
+        )
+        assert bar.bar.contains(bar.track), (
+            f"track {bar.track} not contained in bar {bar.bar}"
+        )
+        # Must not overlap transport buttons.
+        for tname in transport_names:
+            trect = bar.buttons[tname]
+            assert not rect.colliderect(trect), (
+                f"{kname} {rect} collides with transport button {tname} {trect}"
+            )
+        # Must not overlap the scrub track.
+        assert not rect.colliderect(bar.track), (
+            f"{kname} {rect} collides with track {bar.track}"
+        )
+
+    # --- Fix 2: dynamic interp label in draw() ---
+    kf_single = [{"t": 0, "pos": (0, 0), "angle": 0, "height": 10, "interp": "linear"}]
+    bar.draw(surface, font, playhead=0, seq_len=seq_len, n_cached=0, playing=False,
+             keyframes=kf_single)
+
     print("OK")
 
 

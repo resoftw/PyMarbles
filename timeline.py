@@ -8,7 +8,7 @@ class TimelineBar:
     (add/delete/interp) with keyframe markers drawn on the track.
     """
 
-    BAR_HEIGHT = 92
+    BAR_HEIGHT = 110
 
     def __init__(self, screen_w, screen_h):
         self.screen_w = screen_w
@@ -20,17 +20,38 @@ class TimelineBar:
         self.layout(250)
 
     def layout(self, seq_len):
-        """Compute bar/track/button rects along the bottom ~70px of the screen."""
+        """Compute bar/track/button rects along the bottom BAR_HEIGHT px of the screen.
+
+        Layout (top-to-bottom within the bar):
+          6px  top pad
+          26px keyframe row  (key_add, key_del, key_interp)
+          6px  gap
+          28px transport row (play/pause/reset/bake) + length presets (same y)
+          6px  gap
+          14px scrub track   (vertically centred in remaining space)
+          rest bottom pad
+        """
         self._seq_len = int(seq_len)
         bh = self.BAR_HEIGHT
         self.bar = pygame.Rect(0, self.screen_h - bh, self.screen_w, bh)
 
         pad = 10
+        key_h = 26
         btn_h = 28
-        # Transport/length buttons and the track sit in the lower 70px region;
-        # keyframe buttons sit in a row above the track.
-        lower_h = 70
-        btn_y = self.bar.bottom - lower_h + (lower_h - btn_h) // 2
+        track_h = 14
+        row_gap = 6
+
+        # Row 1: keyframe buttons (top of bar + small pad).
+        key_y = self.bar.y + row_gap
+
+        # Row 2: transport + length buttons.
+        btn_y = key_y + key_h + row_gap
+
+        # Row 3: scrub track (centred in remaining space below transport row).
+        track_region_top = btn_y + btn_h + row_gap
+        remaining = self.bar.bottom - track_region_top
+        track_y = track_region_top + max(0, (remaining - track_h) // 2)
+
         self.buttons = {}
 
         # Transport buttons on the left.
@@ -64,15 +85,12 @@ class TimelineBar:
         track_x = x + 8
         track_right = rx - 8
         track_w = max(20, track_right - track_x)
-        track_h = 14
-        track_y = self.bar.bottom - lower_h + (lower_h - track_h) // 2
         self.track = pygame.Rect(track_x, track_y, track_w, track_h)
 
-        # Keyframe buttons in a row above the track (within the upper 22px band).
-        key_y = self.bar.y + (bh - lower_h - btn_h) // 2
+        # Keyframe buttons in a row above the transport row.
         kx = pad
         for name, w in (("key_add", 60), ("key_del", 60), ("key_interp", 78)):
-            self.buttons[name] = pygame.Rect(kx, key_y, w, btn_h)
+            self.buttons[name] = pygame.Rect(kx, key_y, w, key_h)
             kx += w + 6
 
         # Labels for drawing (name -> text).
@@ -136,6 +154,14 @@ class TimelineBar:
         lbl_surf = font.render(label, True, UITheme.TEXT_LIGHT)
         surface.blit(lbl_surf, lbl_surf.get_rect(center=(self.track.centerx, self.track.y - 16)))
 
+        # Dynamic label for key_interp: show the interp of the keyframe at the playhead.
+        interp_label = "INTERP"
+        if keyframes:
+            for k in keyframes:
+                if int(k["t"]) == int(playhead):
+                    interp_label = k["interp"].upper()
+                    break
+
         # Buttons.
         mouse = pygame.mouse.get_pos()
         for name, rect in self.buttons.items():
@@ -153,7 +179,8 @@ class TimelineBar:
                 border = UITheme.BORDER
             pygame.draw.rect(surface, bg, rect, border_radius=5)
             pygame.draw.rect(surface, border, rect, width=1, border_radius=5)
-            txt = font.render(self._labels[name], True, UITheme.TEXT_LIGHT)
+            label_text = interp_label if name == "key_interp" else self._labels[name]
+            txt = font.render(label_text, True, UITheme.TEXT_LIGHT)
             surface.blit(txt, txt.get_rect(center=rect.center))
 
     def hit(self, pos):
