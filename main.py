@@ -82,6 +82,7 @@ seq_len = 250
 playhead = 0
 playing = False
 scrubbing = False         # True while dragging the timeline playhead
+editing_frame = False     # True while dragging a render-frame handle in CAMERA mode
 cache = None              # SimCache for the current race
 cache_dirty = True        # set True whenever the map changes; forces a fresh bake/cache
 timeline = None           # TimelineBar, built after screen size is known
@@ -141,6 +142,11 @@ def enter_camera_mode():
         cache_dirty = False
     playhead = 0
     playing = False
+    # Select the render frame so its move/rotate/scale handles are active and the
+    # owner can compose the shot directly over the cached marbles.
+    if editor.render_frame:
+        editor.selected_entity = ("render_frame", editor.render_frame)
+        editor.active_tool = "select"
 
 def toggle_mode():
     """Switch between EDIT and CAMERA (timeline) modes."""
@@ -158,6 +164,7 @@ def toggle_mode():
         # Leaving camera: return to a stopped edit state.
         playing = False
         simulation.stop()
+        editor.selected_entity = None
         mode = "edit"
     build_ui()
 
@@ -919,6 +926,17 @@ while True:
                 if in_toolbar:
                     for btn in buttons:
                         btn.check_click(m_pos)
+                elif event.button == 1 and not timeline.bar.collidepoint(m_pos):
+                    # Outside toolbar and timeline: forward to the editor for render-frame
+                    # editing, but only if a handle is actually under the cursor (so a
+                    # stray click in the scene doesn't clear the frame selection).
+                    if editor.get_handle_under_mouse(camera.screen_to_world(m_pos)):
+                        if editor.selected_entity is None and editor.render_frame:
+                            editor.selected_entity = ("render_frame", editor.render_frame)
+                            editor.active_tool = "select"
+                        editor.handle_mouse_down(m_pos, 1)
+                        if editor.active_handle:
+                            editing_frame = True
                 elif event.button == 1:
                     action = timeline.hit(m_pos)
                     if action == "play":
@@ -1001,6 +1019,9 @@ while True:
         elif event.type == pygame.MOUSEBUTTONUP:
             if mode == "camera":
                 if event.button == 1:
+                    if editing_frame:
+                        editor.handle_mouse_up(event.pos, 1)
+                        editing_frame = False
                     scrubbing = False
                 elif event.button in (2, 3):
                     panning = False
@@ -1018,7 +1039,9 @@ while True:
 
         elif event.type == pygame.MOUSEMOTION:
             if mode == "camera":
-                if panning:
+                if editing_frame:
+                    editor.handle_mouse_move(event.pos)
+                elif panning:
                     dx = event.pos[0] - pan_start_pos[0]
                     dy = event.pos[1] - pan_start_pos[1]
                     camera.pan(dx, dy)
@@ -1081,12 +1104,14 @@ while True:
         else:
             screen.fill(UITheme.BG_DARK_SOLID)
         # Move the render guide frame to the interpolated camera pose at the playhead.
-        if editor.render_frame and editor.render_frame["keyframes"]:
+        # Skip while actively dragging a handle so the edit isn't overwritten.
+        if not editing_frame and editor.render_frame and editor.render_frame["keyframes"]:
             camera_anim.apply_pose(
                 editor.render_frame,
                 camera_anim.sample_camera_pose(editor.render_frame, playhead),
             )
         editor.draw_render_frame(screen)
+        editor.draw_handles(screen)
 
         # Toolbar (kept visible so EDIT/CAMERA toggle and map buttons stay reachable).
         toolbar_rect = pygame.Rect(0, 0, width, TOOLBAR_HEIGHT)
