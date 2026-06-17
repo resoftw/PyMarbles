@@ -613,6 +613,14 @@ def render_hq_take():
     if simulation.running:
         toggle_play_state()
 
+    # CAMERA mode with a composed render frame: render the baked sequence through
+    # the animated camera, sampling poses from the frame's keyframes and drawing
+    # from the simulation cache (no live stepping).
+    if mode == "camera" and editor.render_frame is not None:
+        editor.save_undo_state()
+        render_camera_sequence()
+        return
+
     seed = last_take_seed if last_take_seed else None
     editor.save_undo_state()
     run_offline_render(seed)
@@ -773,6 +781,132 @@ def run_offline_render(seed):
     simulation.camera = cam_backup
     simulation.speed_multiplier = speed_backup
     simulation.camera_mode = mode_backup
+    build_ui()
+
+def render_camera_sequence():
+    """Render the baked sequence through the animated render camera.
+
+    Frames come from the simulation cache (no live stepping); the camera pose is
+    sampled per frame from the render frame's keyframes via
+    ``camera_anim.sample_camera_pose``. Audio is replayed from the events captured
+    into the cache during bake. STOP / ESC cut the render early. Reuses the exact
+    rotate-and-crop approach and the finalize spinner from ``run_offline_render``."""
+    global cache
+    SS = 2  # supersample factor (render at 2x then downscale for anti-aliasing)
+
+    rf = editor.render_frame
+    OUT_W, OUT_H = RENDER_FORMATS[rf["format"]]
+    HI_W, HI_H = OUT_W * SS, OUT_H * SS
+
+    # Ensure the cache is complete before rendering (shows the bake progress bar).
+    if cache is None or not cache.is_complete:
+        bake_to(seq_len)
+    if cache is None or cache.n_cached == 0:
+        print("RENDER HQ (camera): no cached frames (bake cancelled); aborting.")
+        build_ui()
+        return
+
+    hud_font = pygame.font.SysFont(UITheme.FONT_NAME, 16)
+
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    temp_video = os.path.join(EXPORTS_DIR, "hq_temp_video.mp4")
+    temp_audio = os.path.join(EXPORTS_DIR, "hq_temp_audio.wav")
+    final_video = os.path.join(EXPORTS_DIR, f"marble_race_hq_{_timestamp()}.mp4")
+
+    if not video_exporter.start_recording(temp_video, OUT_W, OUT_H, fps=60):
+        print("RENDER HQ (camera): failed to open the video writer.")
+        build_ui()
+        return
+
+    total = min(seq_len, cache.n_cached)
+    print(f"RENDER HQ (camera): rendering {OUT_W}x{OUT_H} [{rf['format']}] ({SS}x SS), {total} frames...")
+    stop_rect = _render_stop_button_rect()
+    rendered = 0
+    stop = False
+    for f in range(total):
+        # Handle stop interactions while keeping the window responsive
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                stop = True
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                stop = True
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1 and stop_rect.collidepoint(ev.pos):
+                stop = True
+        if stop:
+            break
+
+        pos, angle, height = camera_anim.sample_camera_pose(rf, f)
+        rotated = abs(angle) > 1e-4
+        zoom_hi = HI_H / float(height)
+        if rotated:
+            # Render into a square large enough to contain the output rect, then
+            # rotate-and-crop to the upright output (sign matches run_offline_render).
+            cam_dim = int(math.ceil(math.hypot(HI_W, HI_H)))
+            render_cam = Camera(cam_dim, cam_dim)
+        else:
+            render_cam = Camera(HI_W, HI_H)
+        render_cam.x, render_cam.y = pos
+        render_cam.zoom = zoom_hi
+        render_cam.min_zoom, render_cam.max_zoom = 1e-3, 1e9
+
+        hi_surf = pygame.Surface((render_cam.screen_width, render_cam.screen_height))
+        hi_glow = pygame.Surface((render_cam.screen_width, render_cam.screen_height), pygame.SRCALPHA)
+        draw_snapshot(hi_surf, hi_glow, render_cam, physics, cache.get(f), cache.marble_table, f / 60.0)
+
+        if rotated:
+            rot = pygame.transform.rotate(hi_surf, -math.degrees(angle))
+            crop = pygame.Rect(0, 0, HI_W, HI_H)
+            crop.center = rot.get_rect().center
+            cropped = pygame.Surface((HI_W, HI_H))
+            cropped.blit(rot, (0, 0), crop)
+            frame = pygame.transform.smoothscale(cropped, (OUT_W, OUT_H))
+        else:
+            frame = pygame.transform.smoothscale(hi_surf, (OUT_W, OUT_H))
+
+        video_exporter.write_frame(frame)
+        rendered += 1
+
+        if rendered % 3 == 0:
+            _draw_render_overlay(frame, rendered, f / 60.0, stop_rect, OUT_W, OUT_H)
+
+    # Finalize. Audio is replayed from the cache's captured events (no re-spatialize).
+    # The mixdown + FFmpeg encode are heavy and synchronous, so run them on a worker
+    # thread and animate a spinner on the main thread to avoid freezing the window.
+    if rendered > 0:
+        sm = SoundManager.get_instance()
+        prev_events = sm.recorded_events
+        prev_env = sm.rolling_envelope
+        status = {'text': 'Finalizing video frames...', 'done': False}
+
+        def finalize():
+            video_exporter.stop_recording()
+            status['text'] = 'Mixing audio from cache...'
+            sm.recorded_events = list(cache.audio_events)
+            sm.rolling_envelope = list(cache.rolling_env)
+            sm.save_wav_recording(temp_audio, rendered / 60.0)
+            status['text'] = 'Encoding final MP4 (FFmpeg)...'
+            merge_audio_video(temp_video, temp_audio, final_video)
+            status['done'] = True
+
+        worker = threading.Thread(target=finalize, daemon=True)
+        worker.start()
+
+        spin_clock = pygame.time.Clock()
+        tick = 0
+        while not status['done']:
+            pygame.event.pump()  # keep the window responsive (ignore input while saving)
+            _draw_saving_overlay(tick, status['text'])
+            tick += 1
+            spin_clock.tick(30)
+
+        # Restore the SoundManager event buffers we borrowed for the mixdown.
+        sm.recorded_events = prev_events
+        sm.rolling_envelope = prev_env
+        print(f"RENDER HQ (camera): {rendered} frames done; saved -> {final_video}")
+    else:
+        video_exporter.stop_recording()
+        print("RENDER HQ (camera): stopped before any frame was rendered.")
+
     build_ui()
 
 def bake_to(target_frames):
