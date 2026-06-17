@@ -2,6 +2,38 @@ import pygame
 import math
 from ui import UITheme, Button, Slider, Tooltip, draw_neon_line, draw_neon_circle
 
+# Output formats available for the render frame: label -> (width_px, height_px)
+RENDER_FORMATS = {
+    "16:9":  (1920, 1080),
+    "9:16":  (1080, 1920),
+    "1:1":   (1080, 1080),
+    "4:3":   (1440, 1080),
+    "21:9":  (2560, 1080),
+}
+FORMAT_ORDER = ["16:9", "9:16", "1:1", "4:3", "21:9"]
+
+def render_frame_size(frame):
+    """World-space (width, height) of a render frame; width follows the format aspect."""
+    ow, oh = RENDER_FORMATS[frame["format"]]
+    h = frame["height"]
+    return h * (ow / float(oh)), h
+
+def render_frame_corners(frame):
+    """Returns the 4 world-space corners of the (possibly rotated) render frame:
+    [top-right, top-left, bottom-left, bottom-right]."""
+    cx, cy = frame["pos"]
+    w, h = render_frame_size(frame)
+    a = frame["angle"]
+    rx, ry = math.cos(a), math.sin(a)        # local +x axis (world)
+    ux, uy = -math.sin(a), math.cos(a)       # local +y axis (world)
+    hw, hh = w / 2.0, h / 2.0
+    return [
+        (cx + rx * hw + ux * hh, cy + ry * hw + uy * hh),
+        (cx - rx * hw + ux * hh, cy - ry * hw + uy * hh),
+        (cx - rx * hw - ux * hh, cy - ry * hw - uy * hh),
+        (cx + rx * hw - ux * hh, cy + ry * hw - uy * hh),
+    ]
+
 class Editor:
     def __init__(self, physics_manager, camera):
         self.physics = physics_manager
@@ -20,6 +52,10 @@ class Editor:
         self.drawing = False
         self.draw_start = None # world coord (wx, wy)
         self.portal_start = None # world coord for portal a
+
+        # Render guide frame (Blender-style render region). Single optional dict:
+        # {'pos': (x,y), 'height': world_h, 'angle': rad, 'format': '16:9'}
+        self.render_frame = None
         
         # Select dragging variables for Moving/Scaling/Rotating objects interactively
         self.dragging_entity = None
@@ -106,7 +142,7 @@ class Editor:
                     self.delete_entity(entity)
                     if self.selected_entity == entity:
                         self.selected_entity = None
-            elif self.active_tool in ["wall", "box", "booster", "finish", "conveyor", "escalator"]:
+            elif self.active_tool in ["wall", "box", "booster", "finish", "conveyor", "escalator", "renderframe"]:
                 self.drawing = True
                 self.draw_start = world_pos
             elif self.active_tool == "spawner":
@@ -166,7 +202,21 @@ class Editor:
                         width = max(width, 0.2)
                         height = max(height, 0.2)
                         self.physics.add_box((cx, cy), width, height, is_dynamic=False)
-            
+                    elif self.active_tool == "renderframe":
+                        cx = (self.draw_start[0] + world_pos[0]) / 2.0
+                        cy = (self.draw_start[1] + world_pos[1]) / 2.0
+                        fmt = self.render_frame["format"] if self.render_frame else "16:9"
+                        self.render_frame = {
+                            "pos": (cx, cy),
+                            "height": max(2.0, abs(dy)),
+                            "angle": 0.0,
+                            "format": fmt,
+                            "keyframes": [],
+                        }
+                        # Select it and switch to the select tool for immediate transform
+                        self.selected_entity = ("render_frame", self.render_frame)
+                        self.active_tool = "select"
+
             # Reset select dragging states
             self.dragging_entity = None
             self.active_handle = None
@@ -243,7 +293,25 @@ class Editor:
             # Check inside the box body as moving handle fallback
             if math.hypot(wx - cx, wy - cy) < max(w, h):
                 return "center"
-                
+
+        elif type_str == "render_frame":
+            cx, cy = obj["pos"]
+            a = obj["angle"]
+            w, h = render_frame_size(obj)
+            ux, uy = -math.sin(a), math.cos(a)  # local +y
+            # Rotation handle above the top edge
+            rot_x = cx + ux * (h / 2.0 + 1.2)
+            rot_y = cy + uy * (h / 2.0 + 1.2)
+            if math.hypot(wx - rot_x, wy - rot_y) < tol:
+                return "rotate"
+            # 4 corners (uniform scale)
+            for i, c in enumerate(render_frame_corners(obj)):
+                if math.hypot(wx - c[0], wy - c[1]) < tol:
+                    return f"corner_{i}"
+            # Center move handle
+            if math.hypot(wx - cx, wy - cy) < tol:
+                return "center"
+
         return None
 
     def handle_mouse_move(self, pos):
@@ -265,6 +333,23 @@ class Editor:
             
         type_str, obj = self.selected_entity
         
+        # Render frame transforms (move / rotate / uniform scale) handled up front
+        if type_str == "render_frame":
+            cx, cy = obj["pos"]
+            if self.active_handle in ("center", "body"):
+                obj["pos"] = (cx + dx, cy + dy)
+            elif self.active_handle == "rotate":
+                mouse_angle = math.atan2(world_pos[1] - cy, world_pos[0] - cx)
+                obj["angle"] = mouse_angle - math.pi / 2.0
+            elif self.active_handle.startswith("corner_"):
+                # Project mouse into frame-local space; the local Y sets the height
+                a = obj["angle"]
+                rxw, ryw = world_pos[0] - cx, world_pos[1] - cy
+                local_y = -rxw * math.sin(a) + ryw * math.cos(a)
+                obj["height"] = max(1.0, abs(local_y) * 2.0)
+            self.last_mouse_world = world_pos
+            return True
+
         if self.active_handle == "center" or self.active_handle == "body":
             # Translate entire object
             if type_str == "spawner":
@@ -527,6 +612,50 @@ class Editor:
             draw_vertex_circle((cx, cy), color=(255, 255, 255), radius=5)
             pygame.draw.circle(surface, (0, 0, 0), scr_center, 2)
 
+        elif type_str == "render_frame":
+            cx, cy = obj["pos"]
+            a = obj["angle"]
+            w, h = render_frame_size(obj)
+            ux, uy = -math.sin(a), math.cos(a)
+            rot_x = cx + ux * (h / 2.0 + 1.2)
+            rot_y = cy + uy * (h / 2.0 + 1.2)
+            scr_center = self.camera.world_to_screen((cx, cy))
+            scr_rot = self.camera.world_to_screen((rot_x, rot_y))
+            pygame.draw.line(surface, rot_handle_color, scr_center, scr_rot, 1)
+            draw_vertex_circle((rot_x, rot_y), color=rot_handle_color, radius=5)
+            for c in render_frame_corners(obj):
+                scr_c = self.camera.world_to_screen(c)
+                rect = pygame.Rect(scr_c[0] - 5, scr_c[1] - 5, 10, 10)
+                pygame.draw.rect(surface, (255, 255, 255), rect)
+                pygame.draw.rect(surface, (255, 180, 0), rect, width=2)
+            draw_vertex_circle((cx, cy), color=(255, 255, 255), radius=5)
+            pygame.draw.circle(surface, (0, 0, 0), scr_center, 2)
+
+    def draw_render_frame(self, surface):
+        """Draws the render guide frame: rotated border, rule-of-thirds, and a label."""
+        if not self.render_frame:
+            return
+        f = self.render_frame
+        scr = [self.camera.world_to_screen(c) for c in render_frame_corners(f)]
+        selected = self.selected_entity and self.selected_entity[0] == "render_frame"
+        col = (0, 255, 200) if selected else (255, 160, 40)
+
+        pygame.draw.polygon(surface, col, scr, width=2)
+
+        tr, tl, bl, br = scr[0], scr[1], scr[2], scr[3]
+
+        def lerp(p, q, t):
+            return (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+
+        for t in (1.0 / 3.0, 2.0 / 3.0):
+            pygame.draw.line(surface, col, lerp(tl, tr, t), lerp(bl, br, t), 1)
+            pygame.draw.line(surface, col, lerp(tl, bl, t), lerp(tr, br, t), 1)
+
+        ow, oh = RENDER_FORMATS[f["format"]]
+        font = pygame.font.SysFont(UITheme.FONT_NAME, 14, bold=True)
+        label = font.render(f"RENDER  {f['format']}  {ow}x{oh}", True, col)
+        surface.blit(label, (tl[0], tl[1] - 20))
+
     def find_entity_at(self, world_pos):
         """Finds any editor entity (wall, spawner, booster, etc.) near world_pos."""
         wx, wy = world_pos
@@ -584,7 +713,14 @@ class Editor:
             dist = math.hypot(wx - box.body.position[0], wy - box.body.position[1])
             if dist <= max(box.width, box.height):
                 return ("box", box)
-                
+
+        # Render frame: only its border is clickable, so objects inside stay selectable
+        if self.render_frame:
+            corners = render_frame_corners(self.render_frame)
+            for i in range(4):
+                if self._point_to_seg_dist(world_pos, corners[i], corners[(i + 1) % 4]) <= threshold:
+                    return ("render_frame", self.render_frame)
+
         return None
 
     def _point_to_seg_dist(self, p, s1, s2):
@@ -601,6 +737,11 @@ class Editor:
     def delete_entity(self, entity):
         """Removes the entity from physics space and collections."""
         type_str, obj = entity
+
+        if type_str == "render_frame":
+            self.render_frame = None
+            return
+
         space = self.physics.space
         
         def safe_remove(*objs):
@@ -936,9 +1077,12 @@ class Editor:
             return
             
         type_str, obj = self.selected_entity
+        self.format_btn_rects = []
         display_type = type_str
         if type_str in ["portal_a", "portal_b"]:
             display_type = "portal"
+        elif type_str == "render_frame":
+            display_type = "render frame"
             
         type_surf = header_font.render(display_type.upper(), True, UITheme.TEXT_LIGHT)
         surface.blit(type_surf, (sidebar_rect.x + 20, sidebar_rect.y + 60))
@@ -974,7 +1118,31 @@ class Editor:
             slider._update_handle_pos()
             slider.draw(surface, font)
             y_offset += 65
-            
+
+        if type_str == "render_frame":
+            surface.blit(font.render("Output Format:", True, UITheme.TEXT_MUTED),
+                         (sidebar_rect.x + 20, sidebar_rect.y + y_offset))
+            y_offset += 28
+            bx = sidebar_rect.x + 20
+            by = sidebar_rect.y + y_offset
+            for fmt in FORMAT_ORDER:
+                rect = pygame.Rect(bx, by, 70, 30)
+                active = (obj["format"] == fmt)
+                pygame.draw.rect(surface, UITheme.ACCENT_CYAN if active else UITheme.BTN_NORMAL, rect, border_radius=5)
+                pygame.draw.rect(surface, UITheme.BORDER, rect, width=1, border_radius=5)
+                ft = font.render(fmt, True, (0, 0, 0) if active else UITheme.TEXT_LIGHT)
+                surface.blit(ft, ft.get_rect(center=rect.center))
+                self.format_btn_rects.append((fmt, rect))
+                bx += 78
+                if bx > sidebar_rect.right - 78:
+                    bx = sidebar_rect.x + 20
+                    by += 38
+            y_offset = (by - sidebar_rect.y) + 50
+            ow, oh = RENDER_FORMATS[obj["format"]]
+            w, h = render_frame_size(obj)
+            surface.blit(font.render(f"{ow}x{oh}px  |  {w:.1f}x{h:.1f}m", True, UITheme.TEXT_MUTED),
+                         (sidebar_rect.x + 20, sidebar_rect.y + y_offset))
+
         del_btn_rect = pygame.Rect(sidebar_rect.x + 20, sidebar_rect.y + sidebar_rect.height - 60, sidebar_rect.width - 40, 36)
         mouse_pos = pygame.mouse.get_pos()
         hover = del_btn_rect.collidepoint(mouse_pos)
@@ -990,5 +1158,10 @@ class Editor:
         
     def handle_inspector_click(self, pos):
         """Checks if deleting or slider dragging happened on sidebar."""
+        for fmt, rect in getattr(self, "format_btn_rects", []):
+            if rect.collidepoint(pos):
+                if self.render_frame:
+                    self.render_frame["format"] = fmt
+                return
         for name, slider in self.sliders.items():
             slider.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1))

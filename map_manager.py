@@ -5,7 +5,7 @@ import os
 
 class MapManager:
     @staticmethod
-    def save_map(physics_manager, filepath):
+    def save_map(physics_manager, filepath, camera=None):
         """Saves the current physics layout to a JSON file."""
         data = {
             "gravity": list(physics_manager.space.gravity),
@@ -140,6 +140,10 @@ class MapManager:
             
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+
+        if camera is not None:
+            data["camera"] = camera
+
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=4)
 
@@ -270,8 +274,8 @@ class MapManager:
                 motor_speed=sp_data.get("motor_speed", 2.0),
                 color=tuple(sp_data.get("color", (0, 255, 255)))
             )
-            
-        return True
+
+        return data.get("camera")
 
     @staticmethod
     def load_preset(physics_manager, name):

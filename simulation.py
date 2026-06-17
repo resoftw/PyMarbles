@@ -1,5 +1,6 @@
 import pygame
 import math
+import random
 from ui import UITheme, draw_neon_line, draw_neon_circle
 
 class Simulation:
@@ -18,12 +19,26 @@ class Simulation:
         
         # Standings (marbles that crossed finish line or leading marbles)
         self.leaderboard = []
+        self.crossed_count = 0
 
-    def start(self):
-        """Initializes/Resets and starts the simulation."""
+        # Determinism: the seed used for the current run. Seeding the RNG (marble
+        # colors + spawn jitter) lets the offline HQ renderer reproduce a live take
+        # frame-for-frame.
+        self.seed = None
+
+    def start(self, seed=None):
+        """Initializes/Resets and starts the simulation.
+
+        A seed makes the run reproducible: the same seed replays the identical race,
+        which the offline renderer relies on to re-render a live take at high quality."""
+        if seed is None:
+            seed = random.randrange(2**31)
+        self.seed = seed
+        random.seed(seed)
+
         self.running = True
         self.sim_time = 0.0
-        
+
         # Reset spawners
         for spawner in self.physics.spawners:
             spawner['spawned'] = 0
@@ -43,6 +58,26 @@ class Simulation:
     def stop(self):
         """Pauses/Stops simulation."""
         self.running = False
+        # Silence the continuous rolling bed when the race is paused/stopped
+        from sound_manager import SoundManager
+        SoundManager.get_instance().update_rolling([])
+
+    def step_one_frame(self):
+        """Advances exactly one render frame (dt) using 4 substeps, deterministically.
+        Independent of speed_multiplier; used by baking and offline render."""
+        substeps = 4
+        step_size = self.dt / substeps
+        from sound_manager import SoundManager
+        sound_mgr = SoundManager.get_instance()
+        for _ in range(substeps):
+            self.physics.update_spawners(self.sim_time)
+            if sound_mgr.recording:
+                sound_mgr.current_time = self.sim_time
+            self.physics.step(step_size)
+            self.sim_time += step_size
+        self._update_marble_trails()
+        sound_mgr.update_rolling(self.physics.marbles)
+        self._update_leaderboard()
 
     def update(self):
         """Updates physics space, spawners, trails, and leaderboard."""
@@ -79,7 +114,10 @@ class Simulation:
             
         # Update trails once per frame
         self._update_marble_trails()
-            
+
+        # Drive the continuous rolling rumble from current marble activity
+        sound_mgr.update_rolling(self.physics.marbles)
+
         # Update Leaderboard standings
         self._update_leaderboard()
         
@@ -118,6 +156,7 @@ class Simulation:
         
         # Combine
         self.leaderboard = crossed + active_marbles
+        self.crossed_count = len(crossed)
 
     def get_leader(self):
         """Returns the current leader marble shape."""
@@ -175,7 +214,7 @@ class Simulation:
             pygame.draw.circle(surface, marble.color, (hud_rect.x + 60, hud_rect.y + y_offset + 9), 6)
             
             # Speed/Time text
-            if index < len(self.leaderboard) - len([m for m in self.physics.marbles if m not in self.leaderboard]):
+            if index < self.crossed_count:
                 # Finished
                 time_text = font.render("FINISHED", True, (0, 255, 100))
             else:
