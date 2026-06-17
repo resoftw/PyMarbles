@@ -18,7 +18,7 @@ class PhysicsManager:
     def __init__(self):
         self.space = pymunk.Space()
         self.space.gravity = (0.0, -30.0) # World gravity, standard in Pymunk units
-        
+
         # Track collections of entities for drawing and custom logic
         self.marbles = []       # List of Pymunk shapes (circles) that are dynamic marbles
         self.walls = []         # List of Pymunk segment shapes (static)
@@ -32,9 +32,15 @@ class PhysicsManager:
         self.seesaws = []        # List of seesaw dictionary objects
         self.spinners = []       # List of spinner dictionary objects
         self.escalators = []     # List of escalator dictionary objects
-        
+
+        self._uid_counter = 0
+
         # Setup collision handlers
         self._setup_collision_handlers()
+
+    def _next_uid(self):
+        self._uid_counter += 1
+        return self._uid_counter
 
     def clear(self):
         """Clears the entire physics space and resets collections."""
@@ -112,15 +118,16 @@ class PhysicsManager:
         shape.friction = friction
         shape.elasticity = elasticity
         shape.collision_type = self.COLLISION_MARBLE
-        
+        shape.uid = self._next_uid()
+
         # Assign visual color
         if color is None:
             color = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
         shape.color = color
-        
+
         # Store trail history
         shape.trail = []
-        
+
         self.space.add(body, shape)
         self.marbles.append(shape)
         return shape
@@ -169,7 +176,8 @@ class PhysicsManager:
         shape.height = height
         shape.is_dynamic = is_dynamic
         shape.collision_type = self.COLLISION_BOX
-        
+        shape.uid = self._next_uid()
+
         self.space.add(shape)
         self.boxes.append(shape)
         return shape
@@ -546,7 +554,7 @@ class PhysicsManager:
         shape.elasticity = 0.1
         shape.color = color
         shape.collision_type = self.COLLISION_WALL
-        
+
         elev_data = {
             'body': body,
             'shape': shape,
@@ -557,7 +565,8 @@ class PhysicsManager:
             'end_y': pos[1] + travel_distance,
             'speed': speed,
             'direction': 1,
-            'color': color
+            'color': color,
+            'uid': self._next_uid()
         }
         shape.custom_data = elev_data
         
@@ -584,14 +593,14 @@ class PhysicsManager:
         shape.elasticity = 0.2
         shape.color = color
         shape.collision_type = self.COLLISION_SEESAW
-        
+
         joint = pymunk.PivotJoint(pivot_body, body, pos)
         limit = pymunk.RotaryLimitJoint(pivot_body, body, -math.radians(30), math.radians(30))
-        
+
         # Simple motor with moderate torque to drive tilt
         motor = pymunk.SimpleMotor(pivot_body, body, -2.5) # Start by tilting clockwise
         motor.max_force = 150.0
-        
+
         seesaw_data = {
             'pivot_body': pivot_body,
             'body': body,
@@ -604,7 +613,8 @@ class PhysicsManager:
             'limit': limit,
             'motor': motor,
             'target_direction': -1,
-            'cooldown': 0.0
+            'cooldown': 0.0,
+            'uid': self._next_uid()
         }
         shape.custom_data = seesaw_data
         
@@ -653,11 +663,11 @@ class PhysicsManager:
             shapes.append(shape)
             
         joint = pymunk.PivotJoint(pivot_body, body, pos)
-        
+
         motor = None
         if is_motorized:
             motor = pymunk.SimpleMotor(pivot_body, body, motor_speed)
-            
+
         spinner_data = {
             'pivot_body': pivot_body,
             'body': body,
@@ -669,9 +679,10 @@ class PhysicsManager:
             'motor_speed': motor_speed,
             'color': color,
             'joint': joint,
-            'motor': motor
+            'motor': motor,
+            'uid': self._next_uid()
         }
-        
+
         for s in shapes:
             s.custom_data = spinner_data
             
