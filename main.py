@@ -63,6 +63,12 @@ is_recording = False
 recording_frame_count = 0
 export_filepath = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
 
+# Last live "take" — its seed + sim-time length let RENDER HQ reproduce it offline.
+# We store sim_time (not frame count) so the render is identical regardless of the
+# playback speed multiplier used during the live take.
+last_take_seed = None
+last_take_sim_time = 0.0
+
 # Set up UI Buttons in Toolbar
 buttons = []
 def build_ui():
@@ -84,25 +90,29 @@ def build_ui():
     buttons.append(Button(888, 12, 80, 36, "SAVE MAP", tooltip="Save track to map.json", action_callback=save_map))
     buttons.append(Button(976, 12, 80, 36, "LOAD MAP", tooltip="Load track from map.json", action_callback=load_map))
     
-    # 5. Recorder
+    # 5. Recorder + HQ offline renderer
     rec_text = "STOP REC" if is_recording else "RECORD MP4"
-    buttons.append(Button(1064, 12, 110, 36, rec_text, tooltip="Record real-time video and audio", action_callback=toggle_recording))
-    
+    buttons.append(Button(1064, 12, 100, 36, rec_text, tooltip="Record real-time video and audio (live preview)", action_callback=toggle_recording))
+    buttons.append(Button(1170, 12, 95, 36, "RENDER HQ", tooltip="Re-render the last live take offline at 1080p (frame-locked, high quality)", action_callback=render_hq_take))
+
     # 6. Grid snap & Follow camera
     snap_text = "SNAP: ON" if editor.grid_snap else "SNAP: OFF"
-    buttons.append(Button(1182, 12, 85, 36, snap_text, tooltip="Toggle Grid Snapping", action_callback=toggle_grid_snap))
-    
+    buttons.append(Button(1271, 12, 80, 36, snap_text, tooltip="Toggle Grid Snapping", action_callback=toggle_grid_snap))
+
     cam_text = "CAM: FOLLOW" if simulation.camera_mode == "leader" else "CAM: FREE"
-    buttons.append(Button(1275, 12, 100, 36, cam_text, tooltip="Toggle follow leading marble", action_callback=toggle_camera_mode))
+    buttons.append(Button(1357, 12, 100, 36, cam_text, tooltip="Toggle follow leading marble", action_callback=toggle_camera_mode))
     
     # 7. Quit button
     buttons.append(Button(width - 65, 12, 50, 36, "QUIT", tooltip="Exit the application", action_callback=lambda: sys.exit(0)))
 
 def toggle_play_state():
-    global is_recording
+    global is_recording, last_take_seed, last_take_sim_time
     if simulation.running:
         if is_recording:
             stop_realtime_recording()
+        # Remember this run as the "take" RENDER HQ can reproduce offline
+        last_take_seed = simulation.seed
+        last_take_sim_time = simulation.sim_time
         simulation.stop()
         # Reset cooldowns and active booster lists
         for b in physics.boosters:
@@ -420,29 +430,152 @@ def start_realtime_recording():
     build_ui()
 
 def stop_realtime_recording():
-    global is_recording, recording_frame_count
+    global is_recording, recording_frame_count, last_take_seed, last_take_sim_time
     if not is_recording:
         return
-        
+
     is_recording = False
-    
+
     # 1. Stop video exporter
     video_exporter.stop_recording()
-    
+
     # 2. Stop sound manager recording
     temp_video_path = os.path.join(EXPORTS_DIR, "temp_video.mp4")
     temp_audio_path = os.path.join(EXPORTS_DIR, "temp_audio.wav")
     final_video_path = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
-    
+
     duration_sec = recording_frame_count / 60.0
     SoundManager.get_instance().stop_recording(temp_audio_path, duration_sec)
-    
-    # 3. Stop simulation
+
+    # 3. Stop simulation and remember this take so RENDER HQ can reproduce it
+    last_take_seed = simulation.seed
+    last_take_sim_time = simulation.sim_time
     simulation.stop()
-    
+
     # 4. Merge audio and video asynchronously
     merge_audio_video_async(temp_video_path, temp_audio_path, final_video_path)
-    
+
+    build_ui()
+
+def _draw_render_progress(done, total):
+    """Draws a blocking progress screen during offline HQ rendering."""
+    screen.fill(UITheme.BG_DARK_SOLID)
+    pct = done / max(1, total)
+    bar_w = int(width * 0.5)
+    bar_h = 30
+    bx = (width - bar_w) // 2
+    by = height // 2
+    pygame.draw.rect(screen, UITheme.BG_DARK, (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=6)
+    pygame.draw.rect(screen, UITheme.ACCENT_CYAN, (bx, by, int(bar_w * pct), bar_h), border_radius=6)
+    title = pygame.font.SysFont(UITheme.FONT_NAME, 22, bold=True)
+    txt = title.render(f"RENDERING HQ   {done}/{total}   ({pct*100:.0f}%)", True, UITheme.TEXT_LIGHT)
+    screen.blit(txt, txt.get_rect(center=(width // 2, by - 40)))
+    hint = pygame.font.SysFont(UITheme.FONT_NAME, 14).render("Frame-locked offline render (1080p, 2x supersample) — ESC to cancel", True, UITheme.TEXT_MUTED)
+    screen.blit(hint, hint.get_rect(center=(width // 2, by + 60)))
+    pygame.display.flip()
+
+def render_hq_take():
+    """Re-renders the most recent live take offline at high quality.
+
+    Each frame advances the simulation by a fixed dt (1/60s) decoupled from the
+    wall clock, so however long a frame takes to render the resulting animation
+    stays perfectly smooth and identical to the live take (reproduced via seed)."""
+    global is_recording
+    # Make sure we are not mid-playback/recording so the take is finalized
+    if is_recording:
+        stop_realtime_recording()
+    if simulation.running:
+        toggle_play_state()
+
+    if not last_take_seed or last_take_sim_time <= 0.0:
+        print("RENDER HQ: no take to render yet — press SIMULATE (or RECORD MP4) and let a race play first.")
+        return
+
+    num_frames = int(round(last_take_sim_time * 60.0))
+    editor.save_undo_state()
+    run_offline_render(last_take_seed, num_frames)
+
+def run_offline_render(seed, num_frames):
+    OUT_W, OUT_H = 1920, 1080
+    SS = 2  # supersample factor (render at 2x then downscale for anti-aliasing)
+    HI_W, HI_H = OUT_W * SS, OUT_H * SS
+
+    # Hi-res render camera mirroring the live camera, zoom scaled to the render height
+    render_cam = Camera(HI_W, HI_H)
+    render_cam.x, render_cam.y = camera.x, camera.y
+    render_cam.zoom = camera.zoom * (HI_H / float(height))
+    render_cam.min_zoom, render_cam.max_zoom = 1e-3, 1e9
+
+    hi_surf = pygame.Surface((HI_W, HI_H))
+    hi_glow = pygame.Surface((HI_W, HI_H), pygame.SRCALPHA)
+    hud_font = pygame.font.SysFont(UITheme.FONT_NAME, 16)
+
+    # Deterministic reset; route follow-camera updates to the render camera
+    cam_backup = simulation.camera
+    speed_backup = simulation.speed_multiplier
+    simulation.camera = render_cam
+    simulation.speed_multiplier = 1.0
+    simulation.start(seed=seed)
+
+    sm = SoundManager.get_instance()
+    sm.start_recording()
+    sm.offline = True
+
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    temp_video = os.path.join(EXPORTS_DIR, "hq_temp_video.mp4")
+    temp_audio = os.path.join(EXPORTS_DIR, "hq_temp_audio.wav")
+    final_video = os.path.join(EXPORTS_DIR, "marble_race_hq.mp4")
+
+    if not video_exporter.start_recording(temp_video, OUT_W, OUT_H, fps=60):
+        print("RENDER HQ: failed to open the video writer.")
+        sm.offline = False
+        sm.recording = False
+        simulation.stop()
+        simulation.camera = cam_backup
+        simulation.speed_multiplier = speed_backup
+        return
+
+    print(f"RENDER HQ: rendering {num_frames} frames at {OUT_W}x{OUT_H} ({SS}x SS)...")
+    rendered = 0
+    aborted = False
+    for f in range(num_frames):
+        # Keep the window responsive and allow cancelling
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE):
+                aborted = True
+        if aborted:
+            break
+
+        # Advance exactly one frame of simulation time (frame-locked, not wall-clock)
+        sm.camera_pos = (render_cam.x, render_cam.y)
+        sm.view_half_width = (HI_W / 2.0) / render_cam.zoom
+        simulation.update()
+
+        # Render the world supersampled (no HUD), downscale, then draw a crisp HUD
+        hi_glow.fill((0, 0, 0, 0))
+        render_physics_scene(hi_surf, hi_glow, render_cam, draw_hud_overlay=False)
+        frame = pygame.transform.smoothscale(hi_surf, (OUT_W, OUT_H))
+        simulation.draw_hud(frame, hud_font)
+
+        video_exporter.write_frame(frame)
+        rendered += 1
+
+        if f % 2 == 0 or f == num_frames - 1:
+            _draw_render_progress(rendered, num_frames)
+
+    # Finalize
+    video_exporter.stop_recording()
+    sm.stop_recording(temp_audio, rendered / 60.0)
+    sm.offline = False
+    simulation.stop()
+    simulation.camera = cam_backup
+    simulation.speed_multiplier = speed_backup
+
+    if rendered > 0:
+        merge_audio_video_async(temp_video, temp_audio, final_video)
+        print(f"RENDER HQ: {rendered} frames done{' (aborted)' if aborted else ''}; muxing audio -> {final_video}")
+    else:
+        print("RENDER HQ: aborted before any frame was rendered.")
     build_ui()
 
 def toggle_grid_snap():
@@ -597,7 +730,7 @@ while True:
     # and distance falloff always match what is currently visible on screen.
     sound_mgr.view_half_width = (width / 2.0) / camera.zoom
     simulation.update()
-    
+
     # 3. Rendering
     # A. Render base physics scene (fills background, draws neon bodies, trails, marbles, HUD standings)
     glow_surf.fill((0, 0, 0, 0))

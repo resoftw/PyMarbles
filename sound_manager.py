@@ -18,6 +18,7 @@ class SoundManager:
         self.enabled = False
         self.recorded_events = []
         self.recording = False
+        self.offline = False  # when True, log events for the mix but do not play live
         self.current_time = 0.0
         
         # Spatial sound parameters
@@ -223,7 +224,8 @@ class SoundManager:
                 'distance': distance
             })
 
-        if not self.enabled:
+        # During offline rendering we only log events (played back from the mix); skip live audio
+        if self.offline or not self.enabled:
             return
             
         # Retrieve the closest pre-generated pitch shifted sound
@@ -311,8 +313,8 @@ class SoundManager:
         if self.recording:
             self.rolling_envelope.append({'time': self.current_time, 'level': level, 'pan': pan})
 
-        # Drive the live looped channel
-        if self.rolling_channel is not None:
+        # Drive the live looped channel (skipped during offline rendering)
+        if self.rolling_channel is not None and not self.offline:
             angle = (pan + 1.0) * (math.pi / 4.0)
             self.rolling_channel.set_volume(level * math.cos(angle), level * math.sin(angle))
 

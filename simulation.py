@@ -1,5 +1,6 @@
 import pygame
 import math
+import random
 from ui import UITheme, draw_neon_line, draw_neon_circle
 
 class Simulation:
@@ -20,11 +21,24 @@ class Simulation:
         self.leaderboard = []
         self.crossed_count = 0
 
-    def start(self):
-        """Initializes/Resets and starts the simulation."""
+        # Determinism: the seed used for the current run. Seeding the RNG (marble
+        # colors + spawn jitter) lets the offline HQ renderer reproduce a live take
+        # frame-for-frame.
+        self.seed = None
+
+    def start(self, seed=None):
+        """Initializes/Resets and starts the simulation.
+
+        A seed makes the run reproducible: the same seed replays the identical race,
+        which the offline renderer relies on to re-render a live take at high quality."""
+        if seed is None:
+            seed = random.randrange(2**31)
+        self.seed = seed
+        random.seed(seed)
+
         self.running = True
         self.sim_time = 0.0
-        
+
         # Reset spawners
         for spawner in self.physics.spawners:
             spawner['spawned'] = 0
