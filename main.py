@@ -219,20 +219,90 @@ def load_preset_map(name):
     editor.selected_entity = None
     mark_cache_dirty()
 
+def _ask_save_path():
+    """Open a Save As dialog and return the chosen path, or None if cancelled."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.asksaveasfilename(
+            initialdir=MAPS_DIR,
+            defaultextension=".json",
+            filetypes=[("Marble map", "*.json")])
+        root.update()
+        root.destroy()
+        return path or None
+    except Exception as e:
+        print(f"File dialog unavailable: {e}")
+        return os.path.join(MAPS_DIR, "map.json")
+
+
+def _ask_open_path():
+    """Open a file-picker dialog and return the chosen path, or None if cancelled."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.askopenfilename(
+            initialdir=MAPS_DIR,
+            filetypes=[("Marble map", "*.json")])
+        root.update()
+        root.destroy()
+        return path or None
+    except Exception as e:
+        print(f"File dialog unavailable: {e}")
+        return os.path.join(MAPS_DIR, "map.json")
+
+
 def save_map():
-    MapManager.save_map(physics, os.path.join(MAPS_DIR, "map.json"))
-    print("Map saved to maps/map.json")
+    path = _ask_save_path()
+    if path is None:
+        return  # cancelled
+    camera_data = None
+    if editor.render_frame is not None:
+        rf = editor.render_frame
+        camera_data = {
+            "render_frame": {
+                "pos": list(rf["pos"]),
+                "height": rf["height"],
+                "angle": rf["angle"],
+                "format": rf["format"],
+                "keyframes": rf.get("keyframes", []),
+            },
+            "seq_len": seq_len,
+            "seed": simulation.seed,
+        }
+    MapManager.save_map(physics, path, camera=camera_data)
+    print(f"Map saved to {path}")
+
 
 def load_map():
-    global is_recording
+    global is_recording, seq_len, cache_dirty
+    path = _ask_open_path()
+    if path is None:
+        return  # cancelled
     if is_recording:
         stop_realtime_recording()
     editor.save_undo_state()
-    if MapManager.load_map(physics, os.path.join(MAPS_DIR, "map.json")):
+    result = MapManager.load_map(physics, path)
+    if result is not False:
         camera.x, camera.y = 0.0, 0.0
         editor.selected_entity = None
-        mark_cache_dirty()
-        print("Map loaded from maps/map.json")
+        if isinstance(result, dict):
+            rf_data = result.get("render_frame")
+            if rf_data is not None:
+                editor.render_frame = rf_data
+            else:
+                editor.render_frame = None
+            seq_len = result.get("seq_len", seq_len)
+            if timeline is not None:
+                timeline.layout(seq_len)
+        else:
+            editor.render_frame = None
+        cache_dirty = True
+        print(f"Map loaded from {path}")
 
 def render_physics_scene(target_surface, target_glow_surf, render_cam, draw_hud_overlay=False):
     # A. Draw base background
