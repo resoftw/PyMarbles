@@ -14,6 +14,11 @@ from simulation import Simulation
 from ui import UITheme, Button, Slider, Tooltip, draw_neon_line, draw_neon_circle
 from sound_manager import SoundManager
 
+# Resolve paths relative to this file so the app runs from any working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+MAPS_DIR = os.path.join(BASE_DIR, "maps")
+
 # Initialize Pygame and Mixer
 pygame.init()
 pygame.font.init()
@@ -56,7 +61,7 @@ pan_start_pos = (0, 0)
 # Recording settings
 is_recording = False
 recording_frame_count = 0
-export_filepath = "D:/Projects/2026/Python/Marbles/exports/marble_race_recording.mp4"
+export_filepath = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
 
 # Set up UI Buttons in Toolbar
 buttons = []
@@ -138,7 +143,7 @@ def load_preset_map(name):
     editor.selected_entity = None
 
 def save_map():
-    MapManager.save_map(physics, "D:/Projects/2026/Python/Marbles/maps/map.json")
+    MapManager.save_map(physics, os.path.join(MAPS_DIR, "map.json"))
     print("Map saved to maps/map.json")
 
 def load_map():
@@ -146,7 +151,7 @@ def load_map():
     if is_recording:
         stop_realtime_recording()
     editor.save_undo_state()
-    if MapManager.load_map(physics, "D:/Projects/2026/Python/Marbles/maps/map.json"):
+    if MapManager.load_map(physics, os.path.join(MAPS_DIR, "map.json")):
         camera.x, camera.y = 0.0, 0.0
         editor.selected_entity = None
         print("Map loaded from maps/map.json")
@@ -400,9 +405,9 @@ def start_realtime_recording():
     SoundManager.get_instance().start_recording()
     
     # 3. Start video exporter
-    temp_video_path = "D:/Projects/2026/Python/Marbles/exports/temp_video.mp4"
+    temp_video_path = os.path.join(EXPORTS_DIR, "temp_video.mp4")
     # Ensure export folder exists
-    os.makedirs("D:/Projects/2026/Python/Marbles/exports", exist_ok=True)
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
     
     success = video_exporter.start_recording(temp_video_path, width, height, fps=60)
     if success:
@@ -425,9 +430,9 @@ def stop_realtime_recording():
     video_exporter.stop_recording()
     
     # 2. Stop sound manager recording
-    temp_video_path = "D:/Projects/2026/Python/Marbles/exports/temp_video.mp4"
-    temp_audio_path = "D:/Projects/2026/Python/Marbles/exports/temp_audio.wav"
-    final_video_path = "D:/Projects/2026/Python/Marbles/exports/marble_race_recording.mp4"
+    temp_video_path = os.path.join(EXPORTS_DIR, "temp_video.mp4")
+    temp_audio_path = os.path.join(EXPORTS_DIR, "temp_audio.wav")
+    final_video_path = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
     
     duration_sec = recording_frame_count / 60.0
     SoundManager.get_instance().stop_recording(temp_audio_path, duration_sec)
@@ -586,7 +591,11 @@ while True:
             camera.zoom_at(pygame.mouse.get_pos(), zoom_factor)
 
     # 2. Physics & State Updating
-    SoundManager.get_instance().camera_pos = (camera.x, camera.y)
+    sound_mgr = SoundManager.get_instance()
+    sound_mgr.camera_pos = (camera.x, camera.y)
+    # Keep the audio listener's spatial scale in sync with the camera zoom so panning
+    # and distance falloff always match what is currently visible on screen.
+    sound_mgr.view_half_width = (width / 2.0) / camera.zoom
     simulation.update()
     
     # 3. Rendering

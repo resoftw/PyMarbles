@@ -18,6 +18,7 @@ class Simulation:
         
         # Standings (marbles that crossed finish line or leading marbles)
         self.leaderboard = []
+        self.crossed_count = 0
 
     def start(self):
         """Initializes/Resets and starts the simulation."""
@@ -43,6 +44,9 @@ class Simulation:
     def stop(self):
         """Pauses/Stops simulation."""
         self.running = False
+        # Silence the continuous rolling bed when the race is paused/stopped
+        from sound_manager import SoundManager
+        SoundManager.get_instance().update_rolling([])
 
     def update(self):
         """Updates physics space, spawners, trails, and leaderboard."""
@@ -79,7 +83,10 @@ class Simulation:
             
         # Update trails once per frame
         self._update_marble_trails()
-            
+
+        # Drive the continuous rolling rumble from current marble activity
+        sound_mgr.update_rolling(self.physics.marbles)
+
         # Update Leaderboard standings
         self._update_leaderboard()
         
@@ -118,6 +125,7 @@ class Simulation:
         
         # Combine
         self.leaderboard = crossed + active_marbles
+        self.crossed_count = len(crossed)
 
     def get_leader(self):
         """Returns the current leader marble shape."""
@@ -175,7 +183,7 @@ class Simulation:
             pygame.draw.circle(surface, marble.color, (hud_rect.x + 60, hud_rect.y + y_offset + 9), 6)
             
             # Speed/Time text
-            if index < len(self.leaderboard) - len([m for m in self.physics.marbles if m not in self.leaderboard]):
+            if index < self.crossed_count:
                 # Finished
                 time_text = font.render("FINISHED", True, (0, 255, 100))
             else:

@@ -48,7 +48,8 @@ graph TD
 | :--- | :--- | :--- |
 | **Pygame** | UI, Rendering, Input Management | Standard, lightweight, highly responsive, support for fullscreen and raw pixel editing. |
 | **Pymunk** | 2D Physics Engine | Wrapper for Chipmunk2D. Highly accurate rigid-body dynamics (collisions, elasticity, friction, gravity, joints) — far more stable than a custom physics engine for complex tracks. |
-| **OpenCV (`opencv-python`)** | MP4 Video Writing | Easy compilation of Pygame frames into a compressed MP4 video directly from memory buffer (no external dependencies like FFmpeg required). |
+| **OpenCV (`opencv-python`)** | MP4 Video Writing | Compiles Pygame frames into an MP4 video directly from the memory buffer. |
+| **FFmpeg** | Audio/Video Muxing | Merges the recorded race audio (WAV) with the OpenCV video track into the final `.mp4`. Must be available on the system PATH. |
 
 > [!NOTE]
 > Standardizing on `pymunk` ensures we get robust collision response, complex polygons, and constraints (joints, motors) without typical custom-engine glitches like marbles clipping through walls.
