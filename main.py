@@ -811,8 +811,8 @@ def bake_to(target_frames):
     # Capture the logged audio into the cache for later export, then restore.
     cache.audio_events = list(sm.recorded_events)
     cache.rolling_env = list(sm.rolling_envelope)
-    sm.recording = prev_recording
-    sm.offline = prev_offline
+    sm.recording = prev_recording  # stop recording before going back online
+    sm.offline = prev_offline      # mirrors set order: offline=True → start_recording; restore: recording=False → offline=False
 
     playhead = min(playhead, cache.n_cached - 1)
     playing = False
@@ -1062,7 +1062,6 @@ while True:
             if tt:
                 cam_tooltip = tt
 
-        timeline.layout(seq_len)
         timeline.draw(screen, font_medium, playhead, seq_len, cache.n_cached if cache else 0, playing)
         if cam_tooltip:
             Tooltip.draw(screen, cam_tooltip, pygame.mouse.get_pos(), font_medium)
