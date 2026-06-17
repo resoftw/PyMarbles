@@ -144,11 +144,15 @@ class TimelineBar:
         return None
 
     def _scrub(self, pos):
+        return f"scrub:{self.frame_at_x(pos[0])}"
+
+    def frame_at_x(self, mx):
+        """Frame index for a horizontal pixel position, clamped to [0, seq_len-1].
+
+        Used for both click and drag scrubbing — it ignores the y coordinate so the
+        cursor can wander vertically off the track during a drag and still scrub."""
         seq_len = getattr(self, "_seq_len", 250)
-        mx = pos[0]
         if self.track.w <= 0 or seq_len <= 1:
-            return "scrub:0"
+            return 0
         frac = (mx - self.track.x) / float(self.track.w)
-        frame = round(frac * (seq_len - 1))
-        frame = max(0, min(seq_len - 1, frame))
-        return f"scrub:{frame}"
+        return max(0, min(seq_len - 1, round(frac * (seq_len - 1))))

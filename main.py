@@ -80,6 +80,7 @@ mode = "edit"
 seq_len = 250
 playhead = 0
 playing = False
+scrubbing = False         # True while dragging the timeline playhead
 cache = None              # SimCache for the current race
 cache_dirty = True        # set True whenever the map changes; forces a fresh bake/cache
 timeline = None           # TimelineBar, built after screen size is known
@@ -945,10 +946,12 @@ while True:
                         playing = False
                         timeline.layout(seq_len)
                     elif action and action.startswith("scrub:"):
+                        # Begin a scrub drag; motion events continue it.
+                        scrubbing = True
+                        playing = False
                         f = int(action.split(":")[1])
                         if cache is not None and f < cache.n_cached:
                             playhead = f
-                            playing = False
                 elif event.button in (2, 3):
                     panning = True
                     pan_start_pos = m_pos
@@ -983,6 +986,12 @@ while True:
                     pan_start_pos = m_pos
                     
         elif event.type == pygame.MOUSEBUTTONUP:
+            if mode == "camera":
+                if event.button == 1:
+                    scrubbing = False
+                elif event.button in (2, 3):
+                    panning = False
+                continue
             if event.button == 1:
                 # Release left click (stop drawing)
                 editor.handle_mouse_up(event.pos, 1)
@@ -993,8 +1002,19 @@ while True:
                     slider.handle_event(event)
             elif event.button in [2, 3]:
                 panning = False
-                
+
         elif event.type == pygame.MOUSEMOTION:
+            if mode == "camera":
+                if panning:
+                    dx = event.pos[0] - pan_start_pos[0]
+                    dy = event.pos[1] - pan_start_pos[1]
+                    camera.pan(dx, dy)
+                    pan_start_pos = event.pos
+                elif scrubbing and cache is not None:
+                    f = timeline.frame_at_x(event.pos[0])
+                    if f < cache.n_cached:
+                        playhead = f
+                continue
             if panning:
                 # Drag camera
                 dx = event.pos[0] - pan_start_pos[0]
