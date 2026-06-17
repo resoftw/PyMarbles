@@ -80,6 +80,7 @@ last_take_seed = None
 mode = "edit"
 seq_len = 250
 playhead = 0
+last_applied_playhead = -1  # guards apply_pose so drags aren't overwritten
 playing = False
 scrubbing = False         # True while dragging the timeline playhead
 editing_frame = False     # True while dragging a render-frame handle in CAMERA mode
@@ -132,7 +133,7 @@ def mark_cache_dirty():
 
 def enter_camera_mode():
     """(Re)seed the sim and create a fresh SimCache when entering CAMERA mode."""
-    global cache, cache_dirty, playhead, playing
+    global cache, cache_dirty, playhead, playing, last_applied_playhead
     if cache is None or cache_dirty:
         # Reseed deterministically and snapshot frame 0 so scrubbing/playback have
         # a starting frame even before any stepping.
@@ -141,6 +142,7 @@ def enter_camera_mode():
         cache.append(capture_snapshot(physics), physics)
         cache_dirty = False
     playhead = 0
+    last_applied_playhead = -1  # force refresh on first CAMERA frame
     playing = False
     # Select the render frame so its move/rotate/scale handles are active and the
     # owner can compose the shot directly over the cached marbles.
@@ -967,15 +969,18 @@ while True:
                     elif action == "key_add":
                         if editor.render_frame:
                             camera_anim.add_keyframe(editor.render_frame, playhead)
+                            last_applied_playhead = -1
                     elif action == "key_del":
                         if editor.render_frame:
                             camera_anim.delete_keyframe_at(editor.render_frame, playhead)
+                            last_applied_playhead = -1
                     elif action == "key_interp":
                         if editor.render_frame:
                             for k in editor.render_frame["keyframes"]:
                                 if k["t"] == playhead:
                                     k["interp"] = "linear" if k["interp"] == "smooth" else "smooth"
                                     break
+                            last_applied_playhead = -1
                     elif action and action.startswith("scrub:"):
                         # Begin a scrub drag; motion events continue it.
                         scrubbing = True
@@ -1103,13 +1108,18 @@ while True:
             draw_snapshot(screen, glow_surf, camera, physics, snap, cache.marble_table, playhead / 60.0)
         else:
             screen.fill(UITheme.BG_DARK_SOLID)
-        # Move the render guide frame to the interpolated camera pose at the playhead.
-        # Skip while actively dragging a handle so the edit isn't overwritten.
-        if not editing_frame and editor.render_frame and editor.render_frame["keyframes"]:
+        # Move the render guide frame to the interpolated camera pose at the playhead,
+        # but only when the playhead has changed (scrub/play/seek).  This way a
+        # drag-composed pose persists after release until the user presses +KEY or
+        # moves the playhead, rather than being overwritten every frame.
+        if (not editing_frame and editor.render_frame
+                and editor.render_frame["keyframes"]
+                and playhead != last_applied_playhead):
             camera_anim.apply_pose(
                 editor.render_frame,
                 camera_anim.sample_camera_pose(editor.render_frame, playhead),
             )
+            last_applied_playhead = playhead
         editor.draw_render_frame(screen)
         editor.draw_handles(screen)
 
