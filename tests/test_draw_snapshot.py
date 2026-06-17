@@ -8,7 +8,7 @@ from camera import Camera
 from simulation import Simulation
 from sim_cache import SimCache, capture_snapshot, draw_snapshot
 
-p = PhysicsManager(); p.add_wall((-5, 0), (5, -2)); p.add_spawner((0, 5), rate=0.1, count=5)
+p = PhysicsManager(); p.add_wall((-5, 0), (5, -2)); p.add_spawner((0, 5), rate=0.1, count=5); p.add_escalator((-4, 4), (4, 6))
 sim = Simulation(p, Camera(640, 480), None); cache = SimCache(20, 1)
 sim.start(seed=1)
 for _ in range(20):

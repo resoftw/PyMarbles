@@ -133,6 +133,10 @@ def draw_snapshot(surface, glow, cam, physics, snapshot, marble_table, sim_time)
         # During playback treat it as running — draw muted guide line
         pygame.draw.line(surface, (50, 60, 75), p1_scr, p2_scr, 1)
 
+        # Recompute kinematic step body positions from sim_time (no live stepping during cache playback)
+        esc['offset'] = esc['speed'] * sim_time
+        physics.update_escalator_positions_for(esc)
+
         steps = esc.get('steps', [])
         for body, tread, riser in steps:
             # Get world coordinates of tread endpoints (physically clipped in Pymunk)
