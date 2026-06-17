@@ -19,10 +19,11 @@ def main():
     bar = TimelineBar(W, H)
     bar.layout(seq_len)
 
-    # Each transport / length button returns its own action string.
+    # Each transport / length / keyframe button returns its own action string.
     for name in ("play", "pause", "reset", "bake",
                  "len_150", "len_250", "len_500", "len_1000",
-                 "len_minus", "len_plus"):
+                 "len_minus", "len_plus",
+                 "key_add", "key_del", "key_interp"):
         rect = bar.buttons[name]
         assert bar.hit(rect.center) == name, f"button {name} hit mismatch: {bar.hit(rect.center)}"
 
@@ -47,6 +48,14 @@ def main():
     surface = pygame.Surface((W, H))
     font = pygame.font.SysFont("Arial", 13)
     bar.draw(surface, font, playhead=42, seq_len=seq_len, n_cached=100, playing=True)
+
+    # draw() also runs with a non-empty keyframes list (one of which is on the playhead).
+    keyframes = [
+        {"t": 10, "pos": (0, 0), "angle": 0.0, "height": 5.0, "interp": "smooth"},
+        {"t": 120, "pos": (1, 1), "angle": 0.5, "height": 6.0, "interp": "linear"},
+    ]
+    bar.draw(surface, font, playhead=10, seq_len=seq_len, n_cached=100, playing=False,
+             keyframes=keyframes)
 
     print("OK")
 

@@ -16,6 +16,7 @@ from ui import UITheme, Button, Slider, Tooltip, draw_neon_line, draw_neon_circl
 from sound_manager import SoundManager
 from sim_cache import SimCache, capture_snapshot, draw_snapshot
 from timeline import TimelineBar
+import camera_anim
 
 # Resolve paths relative to this file so the app runs from any working directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -945,6 +946,18 @@ while True:
                         cache_dirty = True
                         playing = False
                         timeline.layout(seq_len)
+                    elif action == "key_add":
+                        if editor.render_frame:
+                            camera_anim.add_keyframe(editor.render_frame, playhead)
+                    elif action == "key_del":
+                        if editor.render_frame:
+                            camera_anim.delete_keyframe_at(editor.render_frame, playhead)
+                    elif action == "key_interp":
+                        if editor.render_frame:
+                            for k in editor.render_frame["keyframes"]:
+                                if k["t"] == playhead:
+                                    k["interp"] = "linear" if k["interp"] == "smooth" else "smooth"
+                                    break
                     elif action and action.startswith("scrub:"):
                         # Begin a scrub drag; motion events continue it.
                         scrubbing = True
@@ -1067,6 +1080,12 @@ while True:
             draw_snapshot(screen, glow_surf, camera, physics, snap, cache.marble_table, playhead / 60.0)
         else:
             screen.fill(UITheme.BG_DARK_SOLID)
+        # Move the render guide frame to the interpolated camera pose at the playhead.
+        if editor.render_frame and editor.render_frame["keyframes"]:
+            camera_anim.apply_pose(
+                editor.render_frame,
+                camera_anim.sample_camera_pose(editor.render_frame, playhead),
+            )
         editor.draw_render_frame(screen)
 
         # Toolbar (kept visible so EDIT/CAMERA toggle and map buttons stay reachable).
@@ -1082,7 +1101,8 @@ while True:
             if tt:
                 cam_tooltip = tt
 
-        timeline.draw(screen, font_medium, playhead, seq_len, cache.n_cached if cache else 0, playing)
+        keyframes = editor.render_frame["keyframes"] if editor.render_frame else None
+        timeline.draw(screen, font_medium, playhead, seq_len, cache.n_cached if cache else 0, playing, keyframes=keyframes)
         if cam_tooltip:
             Tooltip.draw(screen, cam_tooltip, pygame.mouse.get_pos(), font_medium)
         pygame.display.flip()

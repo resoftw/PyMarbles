@@ -4,13 +4,11 @@ from ui import UITheme
 
 class TimelineBar:
     """Bottom timeline bar for CAMERA mode: playhead scrubbing, transport
-    (play/pause/reset/bake), and sequence-length presets.
-
-    Keyframe markers/buttons are planned for a later phase; the ``keyframes``
-    argument is accepted now and ignored.
+    (play/pause/reset/bake), sequence-length presets, and camera keyframing
+    (add/delete/interp) with keyframe markers drawn on the track.
     """
 
-    BAR_HEIGHT = 70
+    BAR_HEIGHT = 92
 
     def __init__(self, screen_w, screen_h):
         self.screen_w = screen_w
@@ -29,7 +27,10 @@ class TimelineBar:
 
         pad = 10
         btn_h = 28
-        btn_y = self.bar.y + (bh - btn_h) // 2
+        # Transport/length buttons and the track sit in the lower 70px region;
+        # keyframe buttons sit in a row above the track.
+        lower_h = 70
+        btn_y = self.bar.bottom - lower_h + (lower_h - btn_h) // 2
         self.buttons = {}
 
         # Transport buttons on the left.
@@ -64,14 +65,22 @@ class TimelineBar:
         track_right = rx - 8
         track_w = max(20, track_right - track_x)
         track_h = 14
-        track_y = self.bar.y + (bh - track_h) // 2
+        track_y = self.bar.bottom - lower_h + (lower_h - track_h) // 2
         self.track = pygame.Rect(track_x, track_y, track_w, track_h)
+
+        # Keyframe buttons in a row above the track (within the upper 22px band).
+        key_y = self.bar.y + (bh - lower_h - btn_h) // 2
+        kx = pad
+        for name, w in (("key_add", 60), ("key_del", 60), ("key_interp", 78)):
+            self.buttons[name] = pygame.Rect(kx, key_y, w, btn_h)
+            kx += w + 6
 
         # Labels for drawing (name -> text).
         self._labels = {
             "play": "PLAY", "pause": "PAUSE", "reset": "RESET", "bake": "BAKE",
             "len_150": "150", "len_250": "250", "len_500": "500", "len_1000": "1000",
             "len_minus": "-30", "len_plus": "+30",
+            "key_add": "+KEY", "key_del": "-KEY", "key_interp": "SMOOTH",
         }
 
     def _frame_to_x(self, frame, seq_len):
@@ -97,6 +106,24 @@ class TimelineBar:
 
         # Track border.
         pygame.draw.rect(surface, UITheme.BORDER, self.track, width=1, border_radius=4)
+
+        # Keyframe markers (diamonds) along the track, distinct from the playhead.
+        if keyframes:
+            cy = self.track.centery
+            for k in keyframes:
+                kx = self._frame_to_x(k["t"], seq_len)
+                on_playhead = int(k["t"]) == int(playhead)
+                color = UITheme.ACCENT_CYAN if on_playhead else (240, 200, 80)
+                size = 7 if on_playhead else 5
+                pygame.draw.polygon(
+                    surface, color,
+                    [(kx, cy - size), (kx + size, cy), (kx, cy + size), (kx - size, cy)],
+                )
+                pygame.draw.polygon(
+                    surface, (20, 24, 32),
+                    [(kx, cy - size), (kx + size, cy), (kx, cy + size), (kx - size, cy)],
+                    width=1,
+                )
 
         # Playhead marker.
         px = self._frame_to_x(playhead, seq_len)
@@ -133,7 +160,8 @@ class TimelineBar:
         """Map a click position to an action string, or None.
 
         Returns one of: "play","pause","reset","bake","len_150","len_250",
-        "len_500","len_1000","len_minus","len_plus","scrub:<frame>", or None.
+        "len_500","len_1000","len_minus","len_plus","key_add","key_del",
+        "key_interp","scrub:<frame>", or None.
         Track clicks use the seq_len from the most recent :meth:`layout` call.
         """
         for name, rect in self.buttons.items():

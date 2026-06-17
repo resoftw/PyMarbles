@@ -211,6 +211,7 @@ class Editor:
                             "height": max(2.0, abs(dy)),
                             "angle": 0.0,
                             "format": fmt,
+                            "keyframes": [],
                         }
                         # Select it and switch to the select tool for immediate transform
                         self.selected_entity = ("render_frame", self.render_frame)
