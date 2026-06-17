@@ -45,7 +45,7 @@ def capture_snapshot(physics):
         if getattr(box, "is_dynamic", False):
             bodies[box.uid] = (box.body.position.x, box.body.position.y, box.body.angle)
     for ss in physics.seesaws:
-        b = ss["body"]; bodies[ss["uid"]] = (b.position.x, b.position.y, b.angle) if "uid" in ss else None
+        b = ss["body"]; bodies[ss["uid"]] = (b.position.x, b.position.y, b.angle)
     for sp in physics.spinners:
         b = sp["body"]; bodies[sp["uid"]] = (b.position.x, b.position.y, b.angle)
     for el in physics.elevators:
