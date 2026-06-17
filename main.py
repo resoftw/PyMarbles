@@ -79,6 +79,7 @@ last_take_seed = None
 # "camera" = timeline-driven playback backed by a progressive SimCache.
 mode = "edit"
 seq_len = 250
+pending_seed = None        # seed loaded from a map; reused on CAMERA entry to reproduce the saved race
 playhead = 0
 last_applied_playhead = -1  # guards apply_pose so drags aren't overwritten
 playing = False
@@ -133,11 +134,13 @@ def mark_cache_dirty():
 
 def enter_camera_mode():
     """(Re)seed the sim and create a fresh SimCache when entering CAMERA mode."""
-    global cache, cache_dirty, playhead, playing, last_applied_playhead
+    global cache, cache_dirty, playhead, playing, last_applied_playhead, pending_seed
     if cache is None or cache_dirty:
         # Reseed deterministically and snapshot frame 0 so scrubbing/playback have
-        # a starting frame even before any stepping.
-        simulation.start(seed=None)
+        # a starting frame even before any stepping. A loaded map supplies its seed
+        # via pending_seed so the saved race is reproduced; a fresh session leaves it
+        # None and gets a new random race per dirty entry.
+        simulation.start(seed=pending_seed)
         cache = SimCache(seq_len, simulation.seed)
         cache.append(capture_snapshot(physics), physics)
         cache_dirty = False
@@ -279,7 +282,7 @@ def save_map():
 
 
 def load_map():
-    global is_recording, seq_len, cache_dirty
+    global is_recording, seq_len, cache_dirty, pending_seed
     path = _ask_open_path()
     if path is None:
         return  # cancelled
@@ -297,6 +300,7 @@ def load_map():
             else:
                 editor.render_frame = None
             seq_len = result.get("seq_len", seq_len)
+            pending_seed = result.get("seed")
             if timeline is not None:
                 timeline.layout(seq_len)
         else:
@@ -868,15 +872,22 @@ def render_camera_sequence():
     OUT_W, OUT_H = RENDER_FORMATS[rf["format"]]
     HI_W, HI_H = OUT_W * SS, OUT_H * SS
 
-    # Ensure the cache is complete before rendering (shows the bake progress bar).
-    if cache is None or not cache.is_complete:
-        bake_to(seq_len)
+    # Ensure the cache is complete AND has audio before rendering. A cache filled by
+    # the live PLAY frontier is complete but has no captured audio (recording=False),
+    # so rebuild a fresh full cache at the same seed and bake it (which captures audio).
+    if cache is None or not cache.is_complete or not cache.audio_events:
+        seed = cache.seed if cache is not None else (pending_seed if pending_seed is not None else simulation.seed)
+        simulation.start(seed=seed)
+        cache = SimCache(seq_len, simulation.seed)
+        cache.append(capture_snapshot(physics), physics)
+        bake_to(seq_len)          # fills 1..seq_len, capturing audio events into the cache
+        if cache.n_cached == 0:   # user cancelled the bake
+            build_ui()
+            return
     if cache is None or cache.n_cached == 0:
         print("RENDER HQ (camera): no cached frames (bake cancelled); aborting.")
         build_ui()
         return
-
-    hud_font = pygame.font.SysFont(UITheme.FONT_NAME, 16)
 
     os.makedirs(EXPORTS_DIR, exist_ok=True)
     temp_video = os.path.join(EXPORTS_DIR, "hq_temp_video.mp4")
