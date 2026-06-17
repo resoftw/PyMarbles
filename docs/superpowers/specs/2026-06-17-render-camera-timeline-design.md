@@ -30,19 +30,32 @@ State added (module-level in `main.py`, or a small `Timeline` holder):
 
 ## 3. Sequence length (set up front)
 
-- A control on the timeline bar sets total frames. Default **300** (5s @60fps).
-- Quick presets: **150 / 300 / 600 / 1200** frames, plus `−`/`+` (±30) nudge.
+- A control on the timeline bar sets total frames. Default **250**.
+- Quick presets: **150 / 250 / 500 / 1000** frames, plus `−`/`+` (±30) nudge.
 - `seq_len` is the timeline length AND the render length.
 - Changing `seq_len` invalidates the bake cache (dirty).
 
-## 4. Simulation cache (Bake)
+## 4. Simulation cache (progressive, sequential)
 
-New module `sim_cache.py`. A **BAKE** button (in CAMERA mode) runs the
-deterministic, seeded simulation forward for exactly `seq_len` frames and stores
-a lightweight snapshot per frame, plus the audio event log.
+New module `sim_cache.py`. The cache holds per-frame snapshots indexed by frame,
+filled **sequentially from frame 0** (physics cannot jump ahead). It tracks
+`n_cached` = number of contiguous frames available `[0, n_cached)`.
+
+Two ways the cache fills (both sequential, both append to the frontier):
+- **PLAY (live)** — real-time forward simulation from the frontier with **sound**;
+  each computed frame is appended to the cache as it goes. This is the
+  interactive / "temporary" cache (à la Blender's memory cache while playing).
+- **BAKE** — runs from the frontier to `seq_len` as fast as possible (no
+  real-time cap), **silent**, with a Blender-style **progress bar**. Completes
+  the cache so the whole sequence is scrubbable and render-from-cache is valid.
 
 Determinism already exists: `Simulation.start(seed)` seeds the RNG; substep size
-is speed-independent. Bake stores the seed so re-bake reproduces the same race.
+is speed-independent. The seed is stored so a re-run reproduces the same race.
+
+### Audio
+- Impact events + rolling envelope are captured (timed by `sim_time`) during the
+  fill so the render mux is consistent. Live PLAY also plays them; BAKE is silent
+  but still logs them.
 
 ### Snapshot per frame
 - `marbles`: list of `(id, x, y, angle)`; a separate table maps `id -> (radius, color)`
@@ -51,11 +64,6 @@ is speed-independent. Bake stores the seed so re-bake reproduces the same race.
   boxes, seesaw bars, spinner bodies, elevator platforms (keyed by a stable id).
 - Escalator steps / conveyor dots are pure functions of `sim_time` → recomputed
   at draw time, not stored.
-
-### Audio
-- During bake, `SoundManager.start_recording()` + `offline=True` so impact events
-  and the rolling envelope are captured (timed by `sim_time`) without live sound.
-- The captured events/envelope are kept with the cache for the render mux.
 
 ### Memory
 - ~8–15 MB for a 60s / ~100-marble race. Acceptable.
@@ -73,12 +81,16 @@ Bottom-of-screen bar, shown only in CAMERA mode:
 - Sequence length presets + `−`/`+`.
 - (Optional) **🎲 reseed** to roll a new race; marks cache dirty.
 
-### Playback behaviour
-- **Baked**: PLAY plays from cache; scrub anywhere (O(1) lookup). Preview is
-  **silent** (audio only in the final HQ render) to avoid event-timing complexity.
-- **Not baked**: PLAY runs live physics forward from frame 0, advancing the
-  playhead, with live sound (current behaviour). Scrubbing is disabled until
-  baked (hint: "Bake to scrub"). RESET returns to frame 0.
+### Playback behaviour (frontier model)
+The cache frontier is `n_cached`. Behaviour depends on where the playhead is:
+- **PLAY at the frontier** (`playhead == n_cached < seq_len`): live forward
+  simulation **with sound**; appends each new frame to the cache.
+- **PLAY inside the cached range** (`playhead < n_cached`): silent playback of
+  cached frames (advances the playhead); on reaching the frontier it transitions
+  to live simulation (sound resumes).
+- **Scrub**: allowed anywhere within `[0, n_cached)`, **silent**. Scrubbing past
+  the frontier is not allowed (hint: "Play or Bake to extend").
+- **RESET**: playhead → 0 (cache retained; does not re-simulate).
 
 ## 6. Camera keyframing
 
@@ -110,11 +122,12 @@ In CAMERA mode, RENDER HQ renders exactly `seq_len` frames (the sequence length
 set up front is the definitive render length). The camera holds the last
 keyframe pose after the final key (clamp, per §6). STOP can cut early.
 
-- **Baked**: for frame `f`, draw the cached snapshot through the camera pose
-  `sample(keyframes, f)`. No re-simulation → fast, and the video is guaranteed
-  identical to the preview. Audio muxed from the baked event log.
-- **Not baked**: fall back to deterministic re-simulation for `seq_len` frames
-  (current approach), sampling the camera each frame.
+- If the cache is **incomplete** (`n_cached < seq_len`), RENDER HQ first completes
+  the bake to `seq_len` (silent, progress bar) so the whole sequence is available.
+- Then for each frame `f`, draw the cached snapshot through the camera pose
+  `sample(keyframes, f)`. No re-simulation during the render pass → fast, and the
+  video is guaranteed identical to the preview. Audio muxed from the captured
+  event log.
 - Rotation handled by the existing render-into-square → rotate-and-crop path.
 - Output resolution = the frame's format; 2× supersample. Filename keeps the
   `marble_race_hq_<YYMMDDHHMM>.mp4` timestamp.
