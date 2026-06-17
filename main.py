@@ -14,6 +14,8 @@ from editor import Editor, RENDER_FORMATS, render_frame_size
 from simulation import Simulation
 from ui import UITheme, Button, Slider, Tooltip, draw_neon_line, draw_neon_circle
 from sound_manager import SoundManager
+from sim_cache import SimCache, capture_snapshot, draw_snapshot
+from timeline import TimelineBar
 
 # Resolve paths relative to this file so the app runs from any working directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,13 +74,25 @@ export_filepath = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
 # (length is controlled manually via the STOP button during rendering).
 last_take_seed = None
 
+# CAMERA mode state. "edit" = editor + live physics (existing behaviour);
+# "camera" = timeline-driven playback backed by a progressive SimCache.
+mode = "edit"
+seq_len = 250
+playhead = 0
+playing = False
+cache = None              # SimCache for the current race
+cache_dirty = True        # set True whenever the map changes; forces a fresh bake/cache
+timeline = None           # TimelineBar, built after screen size is known
+
 # Set up UI Buttons in Toolbar
 buttons = []
 def build_ui():
     buttons.clear()
     
     # 1. State Control (Offset to x=240 to clear left side for brand logo title)
-    buttons.append(Button(240, 12, 90, 36, "SIMULATE" if not simulation.running else "EDIT", tooltip="Toggle between Edit and Race simulation mode", action_callback=toggle_play_state))
+    # Label shows the mode you'll switch TO (mirrors the old SIMULATE/EDIT pattern).
+    mode_label = "CAMERA" if mode == "edit" else "EDIT"
+    buttons.append(Button(240, 12, 90, 36, mode_label, tooltip="Toggle between Edit and Camera (timeline) mode", action_callback=toggle_mode))
     
     # 2. Map Actions
     buttons.append(Button(338, 12, 70, 36, "CLEAR", tooltip="Clear entire map", action_callback=clear_map))
@@ -108,6 +122,43 @@ def build_ui():
     # 7. Quit button
     buttons.append(Button(width - 65, 12, 50, 36, "QUIT", tooltip="Exit the application", action_callback=lambda: sys.exit(0)))
 
+def mark_cache_dirty():
+    """Any map edit invalidates the baked race so it gets re-simulated."""
+    global cache_dirty
+    cache_dirty = True
+
+def enter_camera_mode():
+    """(Re)seed the sim and create a fresh SimCache when entering CAMERA mode."""
+    global cache, cache_dirty, playhead, playing
+    if cache is None or cache_dirty:
+        # Reseed deterministically and snapshot frame 0 so scrubbing/playback have
+        # a starting frame even before any stepping.
+        simulation.start(seed=None)
+        cache = SimCache(seq_len, simulation.seed)
+        cache.append(capture_snapshot(physics), physics)
+        cache_dirty = False
+    playhead = 0
+    playing = False
+
+def toggle_mode():
+    """Switch between EDIT and CAMERA (timeline) modes."""
+    global mode, playing, is_recording
+    if mode == "edit":
+        # Leaving edit: stop any live sim/recording first.
+        if is_recording:
+            stop_realtime_recording()
+        if simulation.running:
+            simulation.stop()
+        editor.save_undo_state()
+        mode = "camera"
+        enter_camera_mode()
+    else:
+        # Leaving camera: return to a stopped edit state.
+        playing = False
+        simulation.stop()
+        mode = "edit"
+    build_ui()
+
 def toggle_play_state():
     global is_recording, last_take_seed
     if simulation.running:
@@ -135,6 +186,7 @@ def clear_map():
     physics.clear()
     simulation.sim_time = 0
     editor.selected_entity = None
+    mark_cache_dirty()
 
 def generate_random_map():
     global is_recording
@@ -144,6 +196,7 @@ def generate_random_map():
     MapManager.generate_random_map(physics)
     camera.x, camera.y = 0.0, 0.0
     editor.selected_entity = None
+    mark_cache_dirty()
 
 def load_preset_map(name):
     global is_recording
@@ -153,6 +206,7 @@ def load_preset_map(name):
     MapManager.load_preset(physics, name)
     camera.x, camera.y = 0.0, 0.0
     editor.selected_entity = None
+    mark_cache_dirty()
 
 def save_map():
     MapManager.save_map(physics, os.path.join(MAPS_DIR, "map.json"))
@@ -166,6 +220,7 @@ def load_map():
     if MapManager.load_map(physics, os.path.join(MAPS_DIR, "map.json")):
         camera.x, camera.y = 0.0, 0.0
         editor.selected_entity = None
+        mark_cache_dirty()
         print("Map loaded from maps/map.json")
 
 def render_physics_scene(target_surface, target_glow_surf, render_cam, draw_hud_overlay=False):
@@ -709,6 +764,59 @@ def run_offline_render(seed):
     simulation.camera_mode = mode_backup
     build_ui()
 
+def bake_to(target_frames):
+    """Simulate forward and fill the cache up to ``target_frames`` frames.
+
+    Events are logged silently into the cache (no live audio) so the baked race
+    can later be exported with sound. ESC stops early, leaving a partial cache.
+    Deterministic: if the cache is empty it (re)seeds from cache.seed first."""
+    global cache, playhead, playing, cache_dirty
+    if cache is None or cache_dirty:
+        enter_camera_mode()
+    target = max(1, int(target_frames))
+    if cache.n_cached >= target:
+        return
+
+    sm = SoundManager.get_instance()
+    prev_offline, prev_recording = sm.offline, sm.recording
+
+    # If we haven't stepped past the initial snapshot, reseed so the bake is the
+    # deterministic race for cache.seed.
+    if cache.n_cached <= 1:
+        simulation.start(seed=cache.seed)
+        cache.frames.clear()
+        cache.append(capture_snapshot(physics), physics)
+
+    sm.offline = True
+    sm.start_recording()
+
+    aborted = False
+    while cache.n_cached < target:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                aborted = True
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                aborted = True
+        if aborted:
+            break
+
+        simulation.step_one_frame()
+        cache.append(capture_snapshot(physics), physics)
+
+        done = cache.n_cached
+        if done % 5 == 0 or done >= target:
+            _draw_saving_overlay(done, f"Baking {done}/{target}")
+            pygame.event.pump()
+
+    # Capture the logged audio into the cache for later export, then restore.
+    cache.audio_events = list(sm.recorded_events)
+    cache.rolling_env = list(sm.rolling_envelope)
+    sm.recording = prev_recording
+    sm.offline = prev_offline
+
+    playhead = min(playhead, cache.n_cached - 1)
+    playing = False
+
 def toggle_grid_snap():
     editor.grid_snap = not editor.grid_snap
     build_ui()
@@ -758,6 +866,10 @@ sidebar_rect = pygame.Rect(width - SIDEBAR_WIDTH, TOOLBAR_HEIGHT, SIDEBAR_WIDTH,
 # Glow surface for optimized neon drawing (prevents memory allocation lag)
 glow_surf = pygame.Surface((width, height), pygame.SRCALPHA)
 
+# Bottom timeline bar (CAMERA mode)
+timeline = TimelineBar(width, height)
+timeline.layout(seq_len)
+
 # Main clock
 clock = pygame.time.Clock()
 
@@ -778,7 +890,10 @@ while True:
                 pygame.quit()
                 sys.exit(0)
             elif event.key == pygame.K_SPACE:
-                toggle_play_state()
+                if mode == "camera":
+                    playing = not playing
+                else:
+                    toggle_play_state()
             elif event.key == pygame.K_g:
                 toggle_grid_snap()
             elif event.key == pygame.K_z and (pygame.key.get_mods() & pygame.KMOD_CTRL):
@@ -790,13 +905,55 @@ while True:
             m_pos = event.pos
             # A. Check if toolbar clicked
             in_toolbar = m_pos[1] < TOOLBAR_HEIGHT
-            
+
             # B. Check if sidebar inspector clicked
             in_sidebar = m_pos[0] >= (width - SIDEBAR_WIDTH)
-            
+
             # C. Check if left tools menu clicked
             in_tools_menu = m_pos[0] < 160 and m_pos[1] >= TOOLBAR_HEIGHT and m_pos[1] < (80 + len(left_tools) * 40)
-            
+
+            # CAMERA mode: toolbar still works; timeline bar handles the rest.
+            if mode == "camera":
+                if in_toolbar:
+                    for btn in buttons:
+                        btn.check_click(m_pos)
+                elif event.button == 1:
+                    action = timeline.hit(m_pos)
+                    if action == "play":
+                        playing = True
+                    elif action == "pause":
+                        playing = False
+                    elif action == "reset":
+                        playhead = 0
+                        playing = False
+                    elif action == "bake":
+                        bake_to(seq_len)
+                        build_ui()
+                    elif action in ("len_150", "len_250", "len_500", "len_1000"):
+                        seq_len = int(action.split("_")[1])
+                        cache_dirty = True
+                        playing = False
+                        timeline.layout(seq_len)
+                    elif action == "len_minus":
+                        seq_len = max(30, seq_len - 30)
+                        cache_dirty = True
+                        playing = False
+                        timeline.layout(seq_len)
+                    elif action == "len_plus":
+                        seq_len = max(30, seq_len + 30)
+                        cache_dirty = True
+                        playing = False
+                        timeline.layout(seq_len)
+                    elif action and action.startswith("scrub:"):
+                        f = int(action.split(":")[1])
+                        if cache is not None and f < cache.n_cached:
+                            playhead = f
+                            playing = False
+                elif event.button in (2, 3):
+                    panning = True
+                    pan_start_pos = m_pos
+                continue
+
             if in_toolbar:
                 for btn in buttons:
                     btn.check_click(m_pos)
@@ -808,8 +965,10 @@ while True:
                         editor.save_undo_state()
                         editor.delete_entity(editor.selected_entity)
                         editor.selected_entity = None
+                        mark_cache_dirty()
                 else:
                     editor.handle_inspector_click(m_pos)
+                    mark_cache_dirty()
             elif in_tools_menu:
                 for t_name, btn in tool_buttons:
                     if btn.check_click(m_pos):
@@ -827,6 +986,8 @@ while True:
             if event.button == 1:
                 # Release left click (stop drawing)
                 editor.handle_mouse_up(event.pos, 1)
+                if mode == "edit":
+                    mark_cache_dirty()
                 # Release slider drags on sidebar
                 for name, slider in editor.sliders.items():
                     slider.handle_event(event)
@@ -861,20 +1022,68 @@ while True:
     # Keep the audio listener's spatial scale in sync with the camera zoom so panning
     # and distance falloff always match what is currently visible on screen.
     sound_mgr.view_half_width = (width / 2.0) / camera.zoom
+
+    if mode == "camera":
+        # Timeline-driven advance when playing.
+        if playing and cache is not None:
+            if playhead < cache.n_cached - 1:
+                # Silent cache playback — just advance the playhead.
+                playhead += 1
+            elif cache.n_cached < seq_len:
+                # Live frontier: step the sim, append, play live sound.
+                sound_mgr.offline = False
+                sound_mgr.recording = False
+                simulation.step_one_frame()
+                cache.append(capture_snapshot(physics), physics)
+                playhead = cache.n_cached - 1
+            else:
+                # At the end with a full cache.
+                playing = False
+
+        # 3. Rendering (CAMERA): draw the cached frame, render guide, then timeline.
+        glow_surf.fill((0, 0, 0, 0))
+        snap = cache.get(playhead) if cache is not None else None
+        if snap is not None:
+            draw_snapshot(screen, glow_surf, camera, physics, snap, cache.marble_table, playhead / 60.0)
+        else:
+            screen.fill(UITheme.BG_DARK_SOLID)
+        editor.draw_render_frame(screen)
+
+        # Toolbar (kept visible so EDIT/CAMERA toggle and map buttons stay reachable).
+        toolbar_rect = pygame.Rect(0, 0, width, TOOLBAR_HEIGHT)
+        pygame.draw.rect(screen, UITheme.BG_DARK, toolbar_rect, border_radius=0)
+        pygame.draw.rect(screen, UITheme.BORDER, toolbar_rect, width=1)
+        title_font = pygame.font.SysFont(UITheme.FONT_NAME, 18, bold=True)
+        title_surf = title_font.render("MARBLE PHYSICS LAB", True, UITheme.ACCENT_CYAN)
+        screen.blit(title_surf, title_surf.get_rect(midleft=(15, TOOLBAR_HEIGHT / 2.0)))
+        cam_tooltip = None
+        for btn in buttons:
+            tt = btn.draw(screen, font_medium)
+            if tt:
+                cam_tooltip = tt
+
+        timeline.layout(seq_len)
+        timeline.draw(screen, font_medium, playhead, seq_len, cache.n_cached if cache else 0, playing)
+        if cam_tooltip:
+            Tooltip.draw(screen, cam_tooltip, pygame.mouse.get_pos(), font_medium)
+        pygame.display.flip()
+        clock.tick(60)
+        continue
+
     simulation.update()
 
     # 3. Rendering
     # A. Render base physics scene (fills background, draws neon bodies, trails, marbles, HUD standings)
     glow_surf.fill((0, 0, 0, 0))
     render_physics_scene(screen, glow_surf, camera, draw_hud_overlay=simulation.running)
-    
+
     # Capture clean frame for recording if recording is active
     if is_recording:
         video_exporter.write_frame(screen)
         recording_frame_count += 1
         if recording_frame_count >= 3600:  # 60 seconds safety limit
             stop_realtime_recording()
-    
+
     # B. Draw editor overlays on top of the physics scene (only in edit mode)
     if not simulation.running:
         editor.draw_grid(screen)
