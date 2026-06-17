@@ -62,6 +62,23 @@ class Simulation:
         from sound_manager import SoundManager
         SoundManager.get_instance().update_rolling([])
 
+    def step_one_frame(self):
+        """Advances exactly one render frame (dt) using 4 substeps, deterministically.
+        Independent of speed_multiplier; used by baking and offline render."""
+        substeps = 4
+        step_size = self.dt / substeps
+        from sound_manager import SoundManager
+        sound_mgr = SoundManager.get_instance()
+        for _ in range(substeps):
+            self.physics.update_spawners(self.sim_time)
+            if sound_mgr.recording:
+                sound_mgr.current_time = self.sim_time
+            self.physics.step(step_size)
+            self.sim_time += step_size
+        self._update_marble_trails()
+        sound_mgr.update_rolling(self.physics.marbles)
+        self._update_leaderboard()
+
     def update(self):
         """Updates physics space, spawners, trails, and leaderboard."""
         if not self.running:
