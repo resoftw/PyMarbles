@@ -5,6 +5,7 @@ import math
 import random
 import subprocess
 import threading
+import datetime
 from camera import Camera
 from physics_manager import PhysicsManager
 from map_manager import MapManager
@@ -18,6 +19,10 @@ from sound_manager import SoundManager
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 MAPS_DIR = os.path.join(BASE_DIR, "maps")
+
+def _timestamp():
+    """Compact YYMMDDHHMM stamp for export filenames, e.g. 2606171530."""
+    return datetime.datetime.now().strftime("%y%m%d%H%M")
 
 # Initialize Pygame and Mixer
 pygame.init()
@@ -442,7 +447,7 @@ def stop_realtime_recording():
     # 2. Stop sound manager recording
     temp_video_path = os.path.join(EXPORTS_DIR, "temp_video.mp4")
     temp_audio_path = os.path.join(EXPORTS_DIR, "temp_audio.wav")
-    final_video_path = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
+    final_video_path = os.path.join(EXPORTS_DIR, f"marble_race_{_timestamp()}.mp4")
 
     duration_sec = recording_frame_count / 60.0
     SoundManager.get_instance().stop_recording(temp_audio_path, duration_sec)
@@ -524,7 +529,7 @@ def run_offline_render(seed, num_frames):
     os.makedirs(EXPORTS_DIR, exist_ok=True)
     temp_video = os.path.join(EXPORTS_DIR, "hq_temp_video.mp4")
     temp_audio = os.path.join(EXPORTS_DIR, "hq_temp_audio.wav")
-    final_video = os.path.join(EXPORTS_DIR, "marble_race_hq.mp4")
+    final_video = os.path.join(EXPORTS_DIR, f"marble_race_hq_{_timestamp()}.mp4")
 
     if not video_exporter.start_recording(temp_video, OUT_W, OUT_H, fps=60):
         print("RENDER HQ: failed to open the video writer.")
