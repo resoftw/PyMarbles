@@ -68,11 +68,9 @@ is_recording = False
 recording_frame_count = 0
 export_filepath = os.path.join(EXPORTS_DIR, "marble_race_recording.mp4")
 
-# Last live "take" — its seed + sim-time length let RENDER HQ reproduce it offline.
-# We store sim_time (not frame count) so the render is identical regardless of the
-# playback speed multiplier used during the live take.
+# Seed of the last live run, so RENDER HQ can reproduce that exact race offline
+# (length is controlled manually via the STOP button during rendering).
 last_take_seed = None
-last_take_sim_time = 0.0
 
 # Set up UI Buttons in Toolbar
 buttons = []
@@ -98,7 +96,7 @@ def build_ui():
     # 5. Recorder + HQ offline renderer
     rec_text = "STOP REC" if is_recording else "RECORD MP4"
     buttons.append(Button(1064, 12, 100, 36, rec_text, tooltip="Record real-time video and audio (live preview)", action_callback=toggle_recording))
-    buttons.append(Button(1170, 12, 95, 36, "RENDER HQ", tooltip="Re-render the last live take offline at 1080p (frame-locked, high quality)", action_callback=render_hq_take))
+    buttons.append(Button(1170, 12, 95, 36, "RENDER HQ", tooltip="Offline frame-locked render at 1080p with live preview; stop manually", action_callback=render_hq_take))
 
     # 6. Grid snap & Follow camera
     snap_text = "SNAP: ON" if editor.grid_snap else "SNAP: OFF"
@@ -111,13 +109,12 @@ def build_ui():
     buttons.append(Button(width - 65, 12, 50, 36, "QUIT", tooltip="Exit the application", action_callback=lambda: sys.exit(0)))
 
 def toggle_play_state():
-    global is_recording, last_take_seed, last_take_sim_time
+    global is_recording, last_take_seed
     if simulation.running:
         if is_recording:
             stop_realtime_recording()
-        # Remember this run as the "take" RENDER HQ can reproduce offline
+        # Remember this run's seed so RENDER HQ can reproduce the same race
         last_take_seed = simulation.seed
-        last_take_sim_time = simulation.sim_time
         simulation.stop()
         # Reset cooldowns and active booster lists
         for b in physics.boosters:
@@ -435,7 +432,7 @@ def start_realtime_recording():
     build_ui()
 
 def stop_realtime_recording():
-    global is_recording, recording_frame_count, last_take_seed, last_take_sim_time
+    global is_recording, recording_frame_count, last_take_seed
     if not is_recording:
         return
 
@@ -452,9 +449,8 @@ def stop_realtime_recording():
     duration_sec = recording_frame_count / 60.0
     SoundManager.get_instance().stop_recording(temp_audio_path, duration_sec)
 
-    # 3. Stop simulation and remember this take so RENDER HQ can reproduce it
+    # 3. Stop simulation and remember this run's seed so RENDER HQ can reproduce it
     last_take_seed = simulation.seed
-    last_take_sim_time = simulation.sim_time
     simulation.stop()
 
     # 4. Merge audio and video asynchronously
@@ -462,48 +458,73 @@ def stop_realtime_recording():
 
     build_ui()
 
-def _draw_render_progress(done, total):
-    """Draws a blocking progress screen during offline HQ rendering."""
+def _render_stop_button_rect():
+    """Rect of the STOP & SAVE button shown during offline rendering."""
+    bw, bh = 220, 48
+    return pygame.Rect((width - bw) // 2, int(height * 0.78), bw, bh)
+
+def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
+    """Draws the live preview + STOP button while offline rendering is in progress."""
     screen.fill(UITheme.BG_DARK_SOLID)
-    pct = done / max(1, total)
-    bar_w = int(width * 0.5)
-    bar_h = 30
-    bx = (width - bar_w) // 2
-    by = height // 2
-    pygame.draw.rect(screen, UITheme.BG_DARK, (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=6)
-    pygame.draw.rect(screen, UITheme.ACCENT_CYAN, (bx, by, int(bar_w * pct), bar_h), border_radius=6)
-    title = pygame.font.SysFont(UITheme.FONT_NAME, 22, bold=True)
-    txt = title.render(f"RENDERING HQ   {done}/{total}   ({pct*100:.0f}%)", True, UITheme.TEXT_LIGHT)
-    screen.blit(txt, txt.get_rect(center=(width // 2, by - 40)))
-    hint = pygame.font.SysFont(UITheme.FONT_NAME, 14).render("Frame-locked offline render (1080p, 2x supersample) — ESC to cancel", True, UITheme.TEXT_MUTED)
-    screen.blit(hint, hint.get_rect(center=(width // 2, by + 60)))
+
+    # Title
+    title = pygame.font.SysFont(UITheme.FONT_NAME, 24, bold=True)
+    screen.blit(title.render("RENDERING HQ", True, UITheme.ACCENT_CYAN),
+                title.get_rect(center=(width // 2, int(height * 0.12))))
+
+    # Small live preview of the frame currently being written
+    pv_w = min(900, int(width * 0.5))
+    pv_h = int(pv_w * 9 / 16)
+    pv_x = (width - pv_w) // 2
+    pv_y = int(height * 0.20)
+    preview = pygame.transform.smoothscale(frame, (pv_w, pv_h))
+    screen.blit(preview, (pv_x, pv_y))
+    pygame.draw.rect(screen, UITheme.BORDER, (pv_x, pv_y, pv_w, pv_h), width=1)
+
+    # Info line (frame count + sim time + quality)
+    info = pygame.font.SysFont(UITheme.FONT_NAME, 16)
+    line = f"frame {frame_idx}   |   {sim_time:.2f}s   |   1920x1080  2x SS   |   frame-locked 60fps"
+    screen.blit(info.render(line, True, UITheme.TEXT_MUTED),
+                info.get_rect(center=(width // 2, pv_y + pv_h + 28)))
+
+    # STOP button (hover highlight)
+    hovered = stop_rect.collidepoint(pygame.mouse.get_pos())
+    btn_color = (255, 90, 90) if hovered else (210, 60, 60)
+    pygame.draw.rect(screen, btn_color, stop_rect, border_radius=8)
+    pygame.draw.rect(screen, (255, 160, 160), stop_rect, width=1, border_radius=8)
+    btn_font = pygame.font.SysFont(UITheme.FONT_NAME, 18, bold=True)
+    screen.blit(btn_font.render("■  STOP & SAVE", True, (255, 255, 255)),
+                btn_font.get_rect(center=stop_rect.center))
+
+    hint = pygame.font.SysFont(UITheme.FONT_NAME, 13)
+    screen.blit(hint.render("Click STOP (or press ESC) to finish and save the video", True, UITheme.TEXT_MUTED),
+                hint.get_rect(center=(width // 2, stop_rect.bottom + 24)))
     pygame.display.flip()
 
 def render_hq_take():
-    """Re-renders the most recent live take offline at high quality.
+    """Renders the race offline at high quality with a manual stop.
 
     Each frame advances the simulation by a fixed dt (1/60s) decoupled from the
-    wall clock, so however long a frame takes to render the resulting animation
-    stays perfectly smooth and identical to the live take (reproduced via seed)."""
+    wall clock, so however long a frame takes to render the animation stays
+    perfectly smooth (frame-locked). If a live take was just played its seed is
+    reused so the same race is reproduced; otherwise a fresh deterministic race
+    is generated. The render length is controlled manually via the STOP button."""
     global is_recording
-    # Make sure we are not mid-playback/recording so the take is finalized
+    # Make sure we are not mid-playback/recording first
     if is_recording:
         stop_realtime_recording()
     if simulation.running:
         toggle_play_state()
 
-    if not last_take_seed or last_take_sim_time <= 0.0:
-        print("RENDER HQ: no take to render yet — press SIMULATE (or RECORD MP4) and let a race play first.")
-        return
-
-    num_frames = int(round(last_take_sim_time * 60.0))
+    seed = last_take_seed if last_take_seed else None
     editor.save_undo_state()
-    run_offline_render(last_take_seed, num_frames)
+    run_offline_render(seed)
 
-def run_offline_render(seed, num_frames):
+def run_offline_render(seed):
     OUT_W, OUT_H = 1920, 1080
     SS = 2  # supersample factor (render at 2x then downscale for anti-aliasing)
     HI_W, HI_H = OUT_W * SS, OUT_H * SS
+    SAFETY_CAP = 60 * 60 * 5  # hard limit: 5 minutes of footage
 
     # Hi-res render camera mirroring the live camera, zoom scaled to the render height
     render_cam = Camera(HI_W, HI_H)
@@ -540,15 +561,20 @@ def run_offline_render(seed, num_frames):
         simulation.speed_multiplier = speed_backup
         return
 
-    print(f"RENDER HQ: rendering {num_frames} frames at {OUT_W}x{OUT_H} ({SS}x SS)...")
+    print(f"RENDER HQ: rendering at {OUT_W}x{OUT_H} ({SS}x SS) until stopped...")
+    stop_rect = _render_stop_button_rect()
     rendered = 0
-    aborted = False
-    for f in range(num_frames):
-        # Keep the window responsive and allow cancelling
+    stop = False
+    while not stop and rendered < SAFETY_CAP:
+        # Handle stop interactions while keeping the window responsive
         for ev in pygame.event.get():
-            if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE):
-                aborted = True
-        if aborted:
+            if ev.type == pygame.QUIT:
+                stop = True
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                stop = True
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1 and stop_rect.collidepoint(ev.pos):
+                stop = True
+        if stop:
             break
 
         # Advance exactly one frame of simulation time (frame-locked, not wall-clock)
@@ -565,8 +591,9 @@ def run_offline_render(seed, num_frames):
         video_exporter.write_frame(frame)
         rendered += 1
 
-        if f % 2 == 0 or f == num_frames - 1:
-            _draw_render_progress(rendered, num_frames)
+        # Update the small preview a few times per second (cheap, offline)
+        if rendered % 3 == 0:
+            _draw_render_overlay(frame, rendered, simulation.sim_time, stop_rect)
 
     # Finalize
     video_exporter.stop_recording()
@@ -578,9 +605,10 @@ def run_offline_render(seed, num_frames):
 
     if rendered > 0:
         merge_audio_video_async(temp_video, temp_audio, final_video)
-        print(f"RENDER HQ: {rendered} frames done{' (aborted)' if aborted else ''}; muxing audio -> {final_video}")
+        capped = " (safety cap reached)" if rendered >= SAFETY_CAP else ""
+        print(f"RENDER HQ: {rendered} frames done{capped}; muxing audio -> {final_video}")
     else:
-        print("RENDER HQ: aborted before any frame was rendered.")
+        print("RENDER HQ: stopped before any frame was rendered.")
     build_ui()
 
 def toggle_grid_snap():
