@@ -469,8 +469,8 @@ def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
 
     # Title
     title = pygame.font.SysFont(UITheme.FONT_NAME, 24, bold=True)
-    screen.blit(title.render("RENDERING HQ", True, UITheme.ACCENT_CYAN),
-                title.get_rect(center=(width // 2, int(height * 0.12))))
+    title_surf = title.render("RENDERING HQ", True, UITheme.ACCENT_CYAN)
+    screen.blit(title_surf, title_surf.get_rect(center=(width // 2, int(height * 0.12))))
 
     # Small live preview of the frame currently being written
     pv_w = min(900, int(width * 0.5))
@@ -484,8 +484,8 @@ def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
     # Info line (frame count + sim time + quality)
     info = pygame.font.SysFont(UITheme.FONT_NAME, 16)
     line = f"frame {frame_idx}   |   {sim_time:.2f}s   |   1920x1080  2x SS   |   frame-locked 60fps"
-    screen.blit(info.render(line, True, UITheme.TEXT_MUTED),
-                info.get_rect(center=(width // 2, pv_y + pv_h + 28)))
+    info_surf = info.render(line, True, UITheme.TEXT_MUTED)
+    screen.blit(info_surf, info_surf.get_rect(center=(width // 2, pv_y + pv_h + 28)))
 
     # STOP button (hover highlight)
     hovered = stop_rect.collidepoint(pygame.mouse.get_pos())
@@ -493,12 +493,12 @@ def _draw_render_overlay(frame, frame_idx, sim_time, stop_rect):
     pygame.draw.rect(screen, btn_color, stop_rect, border_radius=8)
     pygame.draw.rect(screen, (255, 160, 160), stop_rect, width=1, border_radius=8)
     btn_font = pygame.font.SysFont(UITheme.FONT_NAME, 18, bold=True)
-    screen.blit(btn_font.render("■  STOP & SAVE", True, (255, 255, 255)),
-                btn_font.get_rect(center=stop_rect.center))
+    btn_surf = btn_font.render("STOP & SAVE", True, (255, 255, 255))
+    screen.blit(btn_surf, btn_surf.get_rect(center=stop_rect.center))
 
     hint = pygame.font.SysFont(UITheme.FONT_NAME, 13)
-    screen.blit(hint.render("Click STOP (or press ESC) to finish and save the video", True, UITheme.TEXT_MUTED),
-                hint.get_rect(center=(width // 2, stop_rect.bottom + 24)))
+    hint_surf = hint.render("Click STOP (or press ESC) to finish and save the video", True, UITheme.TEXT_MUTED)
+    screen.blit(hint_surf, hint_surf.get_rect(center=(width // 2, stop_rect.bottom + 24)))
     pygame.display.flip()
 
 def render_hq_take():
